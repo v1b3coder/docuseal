@@ -27,6 +27,10 @@ module QesHelpers
     OpenSSL::X509::Certificate.new(TEST_DIR.join('certs', 'signer.cert.pem').read)
   end
 
+  def crl
+    OpenSSL::X509::CRL.new(pki_path('root.crl').binread)
+  end
+
   def trust_roots
     [OpenSSL::X509::Certificate.new(pki_path('root.crt').read)]
   end
@@ -74,7 +78,14 @@ module QesHelpers
     submission = FactoryBot.create(:submission, template:, account:)
 
     template.submitters.each do |item|
-      FactoryBot.create(:submitter, submission:, account_id: account.id, uuid: item['uuid'])
+      # Podpisové scénáře začínají s vyplněnými povinnými texty.
+      values = template.fields.each_with_object({}) do |field, acc|
+        next unless field['submitter_uuid'] == item['uuid'] && field['type'] == 'text' && field['required']
+
+        acc[field['uuid']] = 'Test signer'
+      end
+
+      FactoryBot.create(:submitter, submission:, account_id: account.id, uuid: item['uuid'], values:)
     end
 
     submission
@@ -83,7 +94,7 @@ module QesHelpers
   # Podepsané PDF bez appky (stejná pipeline jako produkce): TBS → CMS →
   # PAdES; `seal: true` přidá inkrementální pečeť DocuSealu. Pro testy
   # ověření (docs/16) stačí `signed_pdf` bez LTV.
-  def signed_pdf(pkcs: pkcs12, seal: false, submitter: nil)
+  def signed_pdf(pkcs: pkcs12, seal: false, submitter: nil, tsa_url: nil)
     submitter ||= build_qes_submitter
     field = submitter.submission.template_fields.find { |f| f['type'] == 'qes' }
     tbs_pdf = Qes::TbsDocument.build(submitter, field)
@@ -94,7 +105,7 @@ module QesHelpers
     signature = pkcs.key.sign(OpenSSL::Digest.new('SHA256'), prepared[:signed_attrs_der])
     cms_der = Qes::CmsBuilder.complete(data:, signed_attrs_der: prepared[:signed_attrs_der],
                                         signature:, certificate: pkcs.certificate,
-                                        chain: pkcs.ca_certs)
+                                        chain: pkcs.ca_certs, tsa_url:)
 
     signed = Qes::Embed.call(tbs_pdf, cms_der)
     return signed unless seal
@@ -116,7 +127,7 @@ module QesHelpers
   # Testovací RFC 3161 token nad `io`/`byte_range` (PAdES-LTA testy).
   # `OpenSSL::PKCS7#data` je nil (stejně jako u DigiCert), takže testuje
   # i cestu s TSTInfo v `eContent` (SPEC § 7.6).
-  def timestamp_token(io, byte_range, key: tsa_key, certificate: tsa_certificate)
+  def timestamp_token(io, byte_range, key: tsa_key, certificate: tsa_certificate, at: Time.current)
     digest = OpenSSL::Digest.new('SHA256')
 
     byte_range.each_slice(2) do |offset, length|
@@ -124,7 +135,51 @@ module QesHelpers
       digest << io.read(length)
     end
 
-    build_timestamp_token(digest.digest, key:, certificate:)
+    build_timestamp_token(digest.digest, key:, certificate:, at:)
+  end
+
+  # Skutečný RFC 3161 response nad imprintem HTTP požadavku. Kontrola v
+  # DocTimestamp::Handler zůstává aktivní; žádné stuby dědičných metod.
+  def stub_tsa!(url: 'http://tsa.test', key: QesHelpers.tsa_key, certificate: QesHelpers.tsa_certificate)
+    stub_request(:post, url).to_return do |request|
+      imprint = OpenSSL::Timestamp::Request.new(request.body).message_imprint
+      token = QesHelpers.build_timestamp_token(imprint, key:, certificate:)
+
+      { status: 200, body: QesHelpers.timestamp_response(token),
+        headers: { 'Content-Type' => 'application/timestamp-reply' } }
+    end
+  end
+
+  def timestamp_response(token)
+    OpenSSL::ASN1::Sequence.new([
+      OpenSSL::ASN1::Sequence.new([OpenSSL::ASN1::Integer.new(0)]),
+      OpenSSL::ASN1.decode(token)
+    ]).to_der
+  end
+
+  # Vnější PDF může obsahovat libovolný token. Generátor útočných fixtures
+  # záměrně nepoužívá produkční kontrolu důvěry při vytváření DocTS.
+  def append_timestamp(pdf_bytes, key: tsa_key, certificate: tsa_certificate, at: Time.current, token: nil)
+    handler_class = Class.new(Submissions::TimestampHandler) do
+      define_method(:signature_size) { Qes::DocTimestamp::RESERVE }
+      define_method(:sign) do |io, range|
+        token || QesHelpers.timestamp_token(io, range, key:, certificate:, at:)
+      end
+    end
+    pdf = HexaPDF::Document.new(io: StringIO.new(pdf_bytes))
+    pdf.config['signature.signing_handler'][:test_tsa] = handler_class
+    output = StringIO.new
+    pdf.sign(output, handler: :test_tsa, tsa_url: 'http://tsa.test', write_options: { validate: false })
+
+    output.string
+  end
+
+  def self_signed_tsa_certificate
+    certificate = OpenSSL::X509::Certificate.new(tsa_certificate.to_der)
+    certificate.issuer = certificate.subject
+    certificate.sign(tsa_key, OpenSSL::Digest.new('SHA256'))
+
+    certificate
   end
 
   def tsa_key
@@ -135,6 +190,32 @@ module QesHelpers
     tsa_key_and_certificate.last
   end
 
+  def tsa_root_certificate
+    tsa_root_key_and_certificate.last
+  end
+
+  def tsa_root_key_and_certificate
+    @tsa_root_key_and_certificate ||= begin
+      key = OpenSSL::PKey::RSA.new(2048)
+      certificate = OpenSSL::X509::Certificate.new
+      certificate.version = 2
+      certificate.serial = OpenSSL::BN.rand(64)
+      certificate.subject = OpenSSL::X509::Name.parse('/C=CZ/O=QES Test/CN=Test TSA Root')
+      certificate.issuer = certificate.subject
+      certificate.public_key = key.public_key
+      certificate.not_before = Time.current - 60
+      certificate.not_after = Time.current + 365.days
+      factory = OpenSSL::X509::ExtensionFactory.new
+      factory.subject_certificate = certificate
+      factory.issuer_certificate = certificate
+      certificate.add_extension(factory.create_extension('basicConstraints', 'CA:TRUE', true))
+      certificate.add_extension(factory.create_extension('keyUsage', 'keyCertSign,cRLSign', true))
+      certificate.sign(key, OpenSSL::Digest.new('SHA256'))
+
+      [key, certificate]
+    end
+  end
+
   def tsa_key_and_certificate
     @tsa_key_and_certificate ||= begin
       key = OpenSSL::PKey::RSA.new(2048)
@@ -142,21 +223,22 @@ module QesHelpers
       certificate.version = 2
       certificate.serial = OpenSSL::BN.rand(64)
       certificate.subject = OpenSSL::X509::Name.parse('/C=CZ/O=QES Test/CN=Test TSA')
-      certificate.issuer = certificate.subject
+      certificate.issuer = tsa_root_certificate.subject
       certificate.public_key = key.public_key
       certificate.not_before = Time.current - 60
       certificate.not_after = Time.current + 3600
       factory = OpenSSL::X509::ExtensionFactory.new
       factory.subject_certificate = certificate
-      factory.issuer_certificate = certificate
+      factory.issuer_certificate = tsa_root_certificate
       certificate.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
-      certificate.sign(key, OpenSSL::Digest.new('SHA256'))
+      certificate.add_extension(factory.create_extension('extendedKeyUsage', 'timeStamping', true))
+      certificate.sign(tsa_root_key_and_certificate.first, OpenSSL::Digest.new('SHA256'))
 
       [key, certificate]
     end
   end
 
-  def build_timestamp_token(imprint, key:, certificate:, algorithm: 'SHA256')
+  def build_timestamp_token(imprint, key:, certificate:, algorithm: 'SHA256', at: Time.current)
     digest_algorithm = OpenSSL::ASN1::Sequence.new([
       OpenSSL::ASN1::ObjectId.new('2.16.840.1.101.3.4.2.1'), OpenSSL::ASN1::Null.new(nil)
     ])
@@ -165,7 +247,7 @@ module QesHelpers
       OpenSSL::ASN1::ObjectId.new('1.2.3.4.1'),
       OpenSSL::ASN1::Sequence.new([digest_algorithm, OpenSSL::ASN1::OctetString.new(imprint)]),
       OpenSSL::ASN1::Integer.new(OpenSSL::BN.rand(64)),
-      OpenSSL::ASN1::GeneralizedTime.new(Time.now.utc)
+      OpenSSL::ASN1::GeneralizedTime.new(at.utc)
     ]).to_der
     attributes = OpenSSL::ASN1::Set.new([
       OpenSSL::ASN1::Sequence.new([
@@ -219,6 +301,8 @@ module QesHelpers
     Qes::Config[:trust_roots] = pki_path('root.crt').to_s
     Qes::Config[:require_ltv] = false
     Qes::Config[:tsa_url] = nil
+    Qes::Config[:tsa_required] = false
+    Qes::Config[:tsa_trust_roots] = nil
     # SSRF ochrana (SPEC § 7.4): testovací CRL server na 127.0.0.1 je explicitně povolený.
     Qes::Config[:ltv_allowed_hosts] = '127.0.0.1'
     Qes::Config[:seal_pkcs_path] = pki_path('signer-ades.p12').to_s

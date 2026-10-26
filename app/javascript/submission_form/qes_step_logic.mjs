@@ -10,9 +10,28 @@ export const ERROR_KEYS = {
   not_qualified: 'qes_error_not_qualified',
   not_trusted: 'qes_error_not_trusted',
   revoked: 'qes_error_revoked',
+  fields_incomplete: 'qes_error_fields_incomplete',
+  seal_failed: 'qes_error_seal_failed',
+  validation_failed: 'qes_error_validation_failed',
+  tsa_unavailable: 'qes_error_tsa_unavailable',
+  tsa_trust_not_configured: 'qes_error_tsa_trust_not_configured',
+  values_changed: 'qes_error_values_changed',
+  document_set_changed: 'qes_error_document_set_changed',
+  ltv_unavailable: 'qes_error_ltv_unavailable',
+  prepare_failed: 'qes_error_prepare_failed',
+  signing_context_mismatch: 'qes_error_signing_context_mismatch',
+  document_missing: 'qes_error_document_missing',
+  invalid_certificate: 'qes_error_invalid_certificate',
+  certificate_expired: 'qes_error_certificate_expired',
+  unsupported_key: 'qes_error_unsupported_key',
   rate_limited: 'qes_error_network',
   server_error: 'qes_error_network',
   network: 'qes_error_network'
+}
+
+// Stabilní pořadí: všechna data i ověření před podpisem.
+export function qesFieldsLast (fields) {
+  return [...fields.filter((field) => field.type !== 'qes'), ...fields.filter((field) => field.type === 'qes')]
 }
 
 export const MAX_POLL_MS = 15 * 60 * 1000
@@ -61,4 +80,31 @@ export function terminalPhase (state) {
   if (['failed', 'cancelled', 'declined'].includes(state)) return 'failed'
 
   return null
+}
+
+// Každý požadavek patří ke generaci i konkrétní session.
+export function createPollGuard () {
+  let generation = 0
+  let controller = null
+
+  function invalidate () {
+    generation += 1
+    controller?.abort()
+    controller = null
+  }
+
+  return {
+    invalidate,
+    begin (sessionId) {
+      invalidate()
+      const capturedGeneration = generation
+      controller = new AbortController()
+
+      return {
+        sessionId,
+        signal: controller.signal,
+        isCurrent: (currentSessionId) => generation === capturedGeneration && currentSessionId === sessionId
+      }
+    }
+  }
 }

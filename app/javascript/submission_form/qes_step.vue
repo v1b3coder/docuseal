@@ -33,22 +33,40 @@
       </template>
 
       <template v-else-if="phase === 'awaiting_app'">
-        <p class="text-sm text-gray-600 text-center">{{ t('qes_step_waiting') }}</p>
+        <p class="text-sm text-gray-600 text-center">
+          {{ t(session.error === 'signature_in_progress' ? 'qes_step_in_progress' : 'qes_step_waiting') }}
+        </p>
+        <p v-if="error" class="text-sm text-red-700">{{ errorMessage }}</p>
         <div
+          v-if="session.qr_svg"
           class="qes-qr bg-white p-2 rounded border"
           :aria-label="t('qes_step_button')"
           v-html="session.qr_svg"
         />
-        <button type="button" class="btn btn-primary" @click="openApp">
+        <button v-if="session.custom_scheme_link" type="button" class="btn btn-primary" @click="openApp">
           {{ t('qes_step_open_app') }}
         </button>
-        <a :href="session.fallback_url" class="text-xs text-gray-500 underline" target="_blank">
+        <a
+          v-if="session.fallback_url"
+          :href="session.fallback_url"
+          class="text-xs text-gray-500 underline"
+          target="_blank"
+        >
           {{ t('qes_step_no_app') }}
         </a>
         <p class="text-xs text-gray-500">
           {{ expiresInText }}
         </p>
-        <button type="button" class="btn btn-outline btn-sm" @click="cancelSession">
+        <button
+          v-if="session.error === 'signature_in_progress'"
+          type="button"
+          class="btn btn-outline btn-sm"
+          :disabled="restarting"
+          @click="restartSession"
+        >
+          {{ t('qes_step_cancel_restart') }}
+        </button>
+        <button v-else type="button" class="btn btn-outline btn-sm" @click="cancelSession">
           {{ t('qes_step_cancel') }}
         </button>
       </template>
@@ -80,6 +98,7 @@
 import {
   cancelPath as qesStepCancelPath,
   cancelledState as qesStepCancelledState,
+  createPollGuard as qesStepCreatePollGuard,
   doneText as qesStepDoneText,
   errorKey as qesStepErrorKey,
   expiresInText as qesStepExpiresInText,
@@ -101,14 +120,16 @@ export default {
     dryRun: { type: Boolean, required: false, default: false },
     nativePlatform: { type: String, required: false, default: '' }
   },
-  emits: ['update:modelValue', 'attached', 'start', 'submit'],
+  emits: ['update:modelValue', 'update:values', 'attached', 'start', 'submit'],
   data() {
     return {
-      phase: 'idle',
+      phase: typeof this.modelValue === 'string' && this.modelValue.startsWith('qes:') ? 'completed' : 'idle',
       session: null,
       error: null,
+      restarting: false,
       level: this.field.preferences?.level || 'ades',
       pollTimer: null,
+      pollGuard: qesStepCreatePollGuard(),
       backoff: 2000,
       startedAt: null
     }
@@ -147,6 +168,10 @@ export default {
         body: JSON.stringify(body)
       })
       const payload = await response.json().catch(() => ({}))
+      // Token už nelze vydat znovu, ale rozpracovaný podpis lze dál sledovat.
+      if (response.status === 409 && payload.error === 'signature_in_progress' && payload.id) {
+        return payload
+      }
       if (!response.ok) {
         const error = new Error(payload.error || 'network')
         error.status = response.status
@@ -156,14 +181,30 @@ export default {
       return payload
     },
     async createSession() {
+      this.stopPolling()
+      this.session = null
+      const ticket = this.pollGuard.begin(null)
       this.phase = 'creating'
+      this.error = null
       this.$emit('start')
       try {
-        this.session = await this.post('/qes_sessions', { field_uuid: this.field.uuid })
+        const session = await this.post('/qes_sessions', { field_uuid: this.field.uuid })
+        if (!ticket.isCurrent(this.session?.id ?? null)) return
+
+        this.session = session
+        if (session.state === 'completed') {
+          this.level = this.field.preferences?.level || this.level
+          this.phase = 'completed'
+          this.$emit('update:modelValue', session.value || this.modelValue)
+          return
+        }
+
         this.phase = 'awaiting_app'
         this.startedAt = Date.now()
         this.schedulePoll(2000)
       } catch (error) {
+        if (!ticket.isCurrent(this.session?.id ?? null)) return
+
         this.error = error.code || 'network'
         this.phase = 'failed'
       }
@@ -178,14 +219,21 @@ export default {
       this.pollTimer = setTimeout(this.poll, delay)
     },
     stopPolling() {
+      this.pollGuard.invalidate()
       if (this.pollTimer) clearTimeout(this.pollTimer)
       this.pollTimer = null
     },
     async poll() {
       if (!this.session) return
+      const ticket = this.pollGuard.begin(this.session.id)
       try {
-        const state = await this.fetchState()
+        const state = await this.fetchState(ticket)
+        if (!ticket.isCurrent(this.session?.id)) return
         this.backoff = 2000
+        if (state.values && typeof state.values === 'object') {
+          this.$emit('update:values', state.values)
+        }
+        const errorCode = state.error?.code
         const terminal = qesStepTerminalPhase(state.state)
         if (terminal === 'completed') {
           this.stopPolling()
@@ -197,11 +245,21 @@ export default {
         }
         if (terminal) {
           this.stopPolling()
-          this.error = state.error?.code || state.state
+          this.error = errorCode || state.state
           this.phase = terminal
           return
         }
+        // `seal_failed` a spol. nechávají session v `awaiting_signature`;
+        // bez tohoto by prohlížeč polloval do timeoutu bez důvodu (nález 2.4).
+        if (errorCode) {
+          this.stopPolling()
+          this.error = errorCode
+          this.phase = 'failed'
+          return
+        }
       } catch (error) {
+        if (!ticket.isCurrent(this.session?.id)) return
+
         if (error.status === 410) {
           this.stopPolling()
           this.error = error.code
@@ -210,6 +268,8 @@ export default {
         }
         this.backoff = qesStepNextBackoff(this.backoff)
       }
+      if (!ticket.isCurrent(this.session?.id)) return
+
       if (qesStepPollTimedOut(this.startedAt)) {
         this.stopPolling()
         this.phase = 'expired'
@@ -217,12 +277,15 @@ export default {
       }
       this.schedulePoll(this.backoff)
     },
-    async fetchState() {
+    async fetchState(ticket) {
       const response = await fetch(
-        `${this.baseUrl}/s/${this.submitterSlug}/qes_sessions/${this.session.id}`,
-        { headers: { Accept: 'application/json' } }
+        `${this.baseUrl}/s/${this.submitterSlug}/qes_sessions/${ticket.sessionId}`,
+        { headers: { Accept: 'application/json' }, signal: ticket.signal }
       )
+      if (!ticket.isCurrent(this.session?.id)) return null
+
       const payload = await response.json().catch(() => ({}))
+      if (!ticket.isCurrent(this.session?.id)) return null
       if (!response.ok) {
         const error = new Error(payload.error || 'network')
         error.status = response.status
@@ -232,13 +295,42 @@ export default {
       return payload
     },
     async cancelSession() {
+      const sessionId = this.session?.id
       this.stopPolling()
+      Object.assign(this, qesStepCancelledState())
+      if (!sessionId) return
+
       try {
-        await this.post(qesStepCancelPath(this.session.id), {})
+        await this.post(qesStepCancelPath(sessionId), {})
       } catch {
         // zrušení je best-effort; session stejně vyprší
       }
-      Object.assign(this, qesStepCancelledState())
+    },
+    async restartSession() {
+      if (this.restarting || !this.session) return
+
+      const sessionId = this.session.id
+      this.stopPolling()
+      const ticket = this.pollGuard.begin(sessionId)
+      this.restarting = true
+      this.error = null
+      try {
+        const result = await this.post(qesStepCancelPath(sessionId), {})
+        if (!ticket.isCurrent(this.session?.id)) return
+        if (result.state !== 'cancelled') {
+          this.schedulePoll(0)
+          return
+        }
+
+        await this.createSession()
+      } catch (error) {
+        if (!ticket.isCurrent(this.session?.id)) return
+
+        this.error = error.code || 'network'
+        this.schedulePoll(this.backoff)
+      } finally {
+        this.restarting = false
+      }
     },
     reset() {
       this.stopPolling()
@@ -250,4 +342,3 @@ export default {
   }
 }
 </script>
-

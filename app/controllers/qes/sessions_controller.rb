@@ -15,9 +15,9 @@ module Qes
     before_action :load_session
 
     def show
-      return render_qes_error_with(:expired_token, :gone) if @session.expired?
-      return render_qes_error_with(:used_token, :gone) if @session.terminal? && @session.state != 'completed'
       return render json: completed_payload if @session.state == 'completed'
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
+      return render_qes_error_with(:used_token, :gone) if @session.terminal?
 
       if @session.state == 'awaiting_app'
         Qes::SessionManager.transition!(@session, 'app_opened')
@@ -27,9 +27,20 @@ module Qes
       render json: payload
     end
 
-    def certificate
-      return render_qes_error_with(:expired_token, :gone) if @session.expired?
+    def document
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
+      return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'awaiting_signature'
+      return render_qes_error_with(:document_missing, :conflict) unless @session.tbs_document.attached?
+
+      response.set_header('Cache-Control', 'no-store')
+      send_data @session.tbs_document.download, type: 'application/pdf', disposition: 'inline',
+                                                filename: "qes-tbs-#{@session.id}.pdf"
+    end
+
+    def certificate
+      return render_qes_error_with(:used_token, :gone) if @session.terminal?
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
 
       certificate_der = decode_certificate(params[:certificate])
       chain = Array(params[:chain]).compact_blank.map { |der| decode_certificate(der) }
@@ -47,40 +58,29 @@ module Qes
       return render_qes_error_with(:wrong_state, :conflict) unless @session.state.in?(%w[awaiting_app app_opened])
 
       provider = provider_for(@session)
-      prepared = nil
+      certificate = Qes::CertificateInfo.parse(certificate_der).certificate
+      Qes::Validator.verify_chain!(certificate, chain, provider.trust_roots)
+
       # CRL fetch (síť) mimo DB transakci; transakce pak drží jen zápis (M20).
       crls = Qes::Ltv.fetch_crls(certificate_der, chain:)
 
-      QesSession.transaction do
-        Qes::SessionManager.transition!(@session, 'app_opened') if @session.state == 'awaiting_app'
-        prepared = provider.data_to_sign(certificate_der, chain:, key_location:,
-                                                          app_metadata: params[:app].presence,
-                                                          crls: crls || [])
-        Qes::SessionManager.transition!(@session, 'awaiting_signature')
-        # Úspěšné přijetí certifikátu maže diagnostiku předchozího odmítnutí.
-        @session.update!(failure_code: nil, failure_message: nil) if @session.failure_code.present?
-      end
+      provider.data_to_sign(certificate_der, chain:, key_location:,
+                                            app_metadata: params[:app].presence,
+                                            crls: crls || [])
 
       Qes.log(@session)
 
-      render json: {
-        data_to_sign: Base64.strict_encode64(prepared[:signed_attrs_der]),
-        hash_algorithm: prepared[:hash_algorithm],
-        digest_algorithm_oid: prepared[:digest_algorithm_oid],
-        signature_algorithm: prepared[:signature_algorithm],
-        expires_at: @session.expires_at.utc.iso8601,
-        certificate_info: prepared[:certificate_info]
-      }
+      render json: certificate_payload
     rescue Qes::ClientError => e
       QesSession.where(id: @session.id).update_all(failure_code: e.code.to_s)
       @session.reload
 
-      render_qes_error_with(e.code, :unprocessable_content)
+      render_qes_error(e)
     end
 
     def complete
-      return render_qes_error_with(:expired_token, :gone) if @session.expired?
       return render_qes_error_with(:used_token, :gone) if @session.terminal? && @session.state != 'completed'
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
 
       signature = decode(params[:signature], :signature_invalid)
 
@@ -100,14 +100,20 @@ module Qes
 
       render json: completed_payload
     rescue Qes::ClientError => e
-      fail_session(e)
+      if e.code == :seal_failed
+        QesSession.where(id: @session.id, state: 'awaiting_signature')
+                  .update_all(failure_code: e.code.to_s, failure_message: e.message)
+        Qes.log(@session.reload)
+      else
+        fail_session(e)
+      end
 
       render_qes_error_with(e.code, :unprocessable_content)
     end
 
     def abort
-      return render_qes_error_with(:expired_token, :gone) if @session.expired?
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
 
       code = params[:code].presence || 'cancelled'
       new_state = code == 'user_cancelled' ? 'cancelled' : 'failed'
@@ -181,7 +187,8 @@ module Qes
         level_required: @session.level_required,
         requires_certificate: @session.state.in?(%w[awaiting_app app_opened]),
         server_url: Qes::Config[:public_base_url].presence || Docuseal.default_url_options[:host],
-        expires_at: @session.expires_at&.utc&.iso8601
+        expires_at: @session.expires_at&.utc&.iso8601,
+        values: Qes::ValueValidator.non_qes_values(@session.submitter.values, @session.submitter)
       }
     end
 
@@ -192,7 +199,9 @@ module Qes
         digest_algorithm_oid: Qes::CmsBuilder::DIGEST_ALGORITHM_OIDS.fetch(@session.hash_algorithm),
         signature_algorithm: @session.signature_algorithm,
         expires_at: @session.expires_at&.utc&.iso8601,
-        certificate_info: @session.certificate_info
+        certificate_info: @session.certificate_info,
+        byte_range: Qes::TbsDocument.byte_range(@session.tbs_document.download),
+        document_digest: @session.document_digest
       }
     end
 
@@ -205,16 +214,19 @@ module Qes
         signed_pdf_sha256: @session.signed_pdf_sha256,
         final_pdf_sha256: @session.final_pdf_sha256,
         seal_state: @session.seal_state,
+        doc_timestamp_state: @session.doc_timestamp_state,
+        signing_time: @session.signing_time&.utc&.iso8601,
         validation: @session.validation_report,
-        completed_at: @session.completed_at&.utc&.iso8601
+        revocation: @session.validation_report&.[]('revocation'),
+        completed_at: @session.completed_at&.utc&.iso8601,
+        values: Qes::ValueValidator.non_qes_values(@session.submitter.values, @session.submitter)
       }
     end
 
     def fail_session(error)
-      QesSession.where(id: @session.id).update_all(failure_code: error.code.to_s,
-                                                  failure_message: error.message,
-                                                  failed_at: Time.current,
-                                                  state: 'failed')
+      QesSession.where(id: @session.id, state: Qes::SessionManager::ACTIVE_STATES)
+                .update_all(failure_code: error.code.to_s, failure_message: error.message,
+                            failed_at: Time.current, state: 'failed')
       @session.reload
       Qes.log(@session)
     end

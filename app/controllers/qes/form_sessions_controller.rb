@@ -31,13 +31,30 @@ module Qes
         return render_qes_error_with(:awaiting_previous_signer, :conflict)
       end
 
+      Qes::SigningValues.validate!(@submitter)
+
+      completed = QesSession.completed_for(@submitter, field['uuid'])
+      if completed
+        return render json: { id: completed.id, state: 'completed', value: completed.value_token,
+                             completed: true, expires_at: completed.expires_at&.utc&.iso8601 }
+      end
+
       session = nil
       token = nil
 
-      QesSession.transaction do
+      # Serializuje tvorbu session; jejich stav se kontroluje pod vlastním zámkem.
+      @submitter.submission.with_lock do
         QesSession.active.where(submitter_id: @submitter.id).find_each do |active|
-          Qes::SessionManager.transition!(active, 'cancelled')
+          active.with_lock do
+            if active.state == 'awaiting_signature' && active.field_uuid == field['uuid']
+              session = active
+            elsif active.state.in?(%w[awaiting_app app_opened])
+              Qes::SessionManager.transition!(active, 'cancelled')
+            end
+          end
         end
+
+        next if session
 
         session = QesSession.create!(account: @submitter.account, submission: @submitter.submission,
                                      submitter: @submitter, field_uuid: field['uuid'],
@@ -53,6 +70,12 @@ module Qes
       end
 
       Qes.log(session)
+
+      if token.nil?
+        return render json: { error: 'signature_in_progress', id: session.id, session_id: session.id,
+                              state: session.state, expires_at: session.expires_at&.utc&.iso8601,
+                              poll_interval_ms: 2000 }, status: :conflict
+      end
 
       link = Qes::Link.call(request, '/qes/sign', token)
 
@@ -89,8 +112,10 @@ module Qes
 
       return render_qes_error_with(:unknown_session, :not_found) if session.nil?
 
-      if Qes::SessionManager.active?(session.state)
-        Qes::SessionManager.transition!(session, 'cancelled')
+      session.with_lock do
+        if Qes::SessionManager.active?(session.state)
+          Qes::SessionManager.transition!(session, 'cancelled')
+        end
       end
 
       Qes.log(session)
@@ -129,6 +154,8 @@ module Qes
       return {} unless session.state == 'completed'
 
       {
+        seal_state: session.seal_state,
+        doc_timestamp_state: session.doc_timestamp_state,
         # `renderer` má vždy HTML formát; `render_to_string` by v JSON
         # requestu hledal `icons/_circle_check.json` a spadl by na 500.
         summary_html: ApplicationController.renderer.render(partial: 'submissions/qes_summary',

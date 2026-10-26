@@ -73,6 +73,13 @@ class Submitter < ApplicationRecord
 
   before_validation :set_template_id, on: :create
 
+  # Dokončení projde jen s platnými QES podpisy. Guard je v modelu, aby platil
+  # pro formulář, API i jakoukoli budoucí cestu (nález 3.1). Požadavek se
+  # bere z šablony, ne z `submission.template_fields`, které může API přepsat
+  # (nález 2.6).
+  before_validation :ensure_qes_completion, if: -> { completed_at_changed? && completed_at.present? }
+  before_validation :ensure_qes_values, if: :values_changed?
+
   after_destroy :anonymize_email_events, if: -> { Docuseal.multitenant? }
 
   def status
@@ -131,6 +138,18 @@ class Submitter < ApplicationRecord
 
   def set_template_id
     self.template_id = submission&.template_id
+  end
+
+  def ensure_qes_completion
+    if Qes.missing_required_sessions(self).present?
+      raise Submitters::SubmitValues::ValidationError, 'Required QES signatures are missing'
+    end
+
+    Qes::ValueValidator.call(values, self)
+  end
+
+  def ensure_qes_values
+    Qes::ValueValidator.call(values, self)
   end
 
   def anonymize_email_events

@@ -23,6 +23,10 @@ module Qes
 
   # Konfigurace QES (SPEC § 11). Hodnoty se čtou z ENV, testy je mohou přepsat.
   module Config
+    # QES_TSA_URL: RFC 3161 endpoint for signature and document timestamps.
+    # QES_TSA_TRUST_ROOTS: comma-separated PEM file paths for trusted TSA roots.
+    # Required whenever QES_TSA_URL is set, even with QES_TSA_REQUIRED=false.
+    # Without TSA roots, timestamps provide no trusted historical validation time.
     DEFAULTS = {
       enabled: false,
       session_ttl: 600,
@@ -36,6 +40,7 @@ module Qes
       public_base_url: nil,
       trust_roots: nil,
       tsa_url: nil,
+      tsa_trust_roots: nil,
       tsa_required: true,
       require_ltv: false,
       ltv_allowed_hosts: nil,
@@ -94,6 +99,19 @@ module Qes
     end
   end
 
+  # Samostatné kořeny důvěry pro časová razítka.
+  def self.tsa_trust_roots
+    paths = Config[:tsa_trust_roots]
+    paths = paths.split(',') if paths.is_a?(String)
+
+    Array(paths).flat_map do |path|
+      path = path.strip
+      next [] if path.blank? || !File.exist?(path)
+
+      OpenSSL::X509::Certificate.load_file(path)
+    end
+  end
+
   # Pole šablony submissionu. U submissions vytvořených z UI bývá `template_fields`
   # prázdné (plní se až při odeslání formuláře) — stejný fallback jako upstream
   # (`submission.template_fields || submission.template.fields`).
@@ -106,6 +124,24 @@ module Qes
     template_fields(submission).find do |field|
       field['uuid'] == uuid && (submitter_uuid.nil? || field['submitter_uuid'] == submitter_uuid)
     end
+  end
+
+  def self.missing_required_sessions(submitter)
+    sessions = submitter.qes_sessions.completed.to_a
+    fields = submitter.submission.template&.fields.presence || template_fields(submitter.submission)
+
+    fields.select do |field|
+      next unless field['type'] == 'qes' && field['required'] && field['submitter_uuid'] == submitter.uuid
+
+      sessions.none? { |session| session.field_uuid == field['uuid'] && session_satisfies_level?(session, field) }
+    end
+  end
+
+  def self.session_satisfies_level?(session, field)
+    required = field.dig('preferences', 'level').presence || 'ades'
+
+    %w[ades qes].include?(required) &&
+      (session.level == 'qes' || (required == 'ades' && session.level == 'ades'))
   end
 
   def self.template_schema(submission)
