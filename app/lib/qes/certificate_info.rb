@@ -36,7 +36,7 @@ module Qes
         next unless statement.is_a?(OpenSSL::ASN1::Sequence)
 
         oid = statement.value.first
-        QC_STATEMENT_NAMES[oid&.value]
+        QC_STATEMENT_NAMES[oid.value] if oid.respond_to?(:value)
       end
     rescue OpenSSL::ASN1::ASN1Error
       []
@@ -67,7 +67,25 @@ module Qes
 
     def digital_signature?
       usage = key_usage
-      usage.nil? || usage[0] == '1'
+      usage&.[](0) == '1'
+    end
+
+    def content_commitment?
+      key_usage&.[](1) == '1'
+    end
+
+    def signing_leaf?
+      return false unless digital_signature? || content_commitment?
+
+      constraints = find_extension('2.5.29.19', 'basicConstraints')
+      return true unless constraints
+
+      sequence = OpenSSL::ASN1.decode(constraints.value_der)
+      return false unless sequence.is_a?(OpenSSL::ASN1::Sequence)
+
+      sequence.value.none? { |item| item.is_a?(OpenSSL::ASN1::Boolean) && item.value }
+    rescue OpenSSL::ASN1::ASN1Error
+      false
     end
 
     def find_extension(oid, short_name)
@@ -114,7 +132,9 @@ module Qes
     # Zkontroluje certifikát proti požadované úrovni a umístění klíče (SPEC § 5.2).
     # Vrací hash pro `certificate_info`; při chybě vyhodí `Qes::ClientError`.
     def validate!(level_required:, key_location:, at: Time.current)
-      raise ClientError.new(:invalid_certificate, 'Missing digitalSignature key usage') unless digital_signature?
+      unless signing_leaf?
+        raise ClientError.new(:invalid_certificate, 'A non-CA signing certificate with signing key usage is required')
+      end
       raise ClientError.new(:certificate_expired, 'Certificate is not valid at this time') if expired?(at)
       raise ClientError.new(:unsupported_key, "Unsupported key type #{key_type.inspect}") unless %w[rsa ecdsa].include?(key_type)
       raise ClientError.new(:unsupported_key, 'Key too small') if key_type == 'rsa' && key_size < 2048

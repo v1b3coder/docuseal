@@ -28,6 +28,53 @@ RSpec.describe 'QES chained signatures' do
     [submission.submitters.order(:id).to_a[index], session.reload]
   end
 
+  it 'completes a later signer when an intact earlier DocTS is no longer trusted' do
+    allow(Qes::Ltv).to receive(:fetch_first_crl).and_return(QesHelpers.crl)
+    Qes::Config[:tsa_url] = 'http://tsa.test'
+    old_certificate = QesHelpers.self_signed_tsa_certificate
+    allow(Qes).to receive(:tsa_trust_roots).and_return([old_certificate])
+    stub_tsa!(certificate: old_certificate)
+    submission = QesHelpers.build_qes_submission(count: 2)
+    _first, first_session = sign!(submission, 0)
+    allow(Qes).to receive(:tsa_trust_roots).and_return([QesHelpers.tsa_root_certificate])
+    stub_tsa!
+
+    _second, second_session = sign!(submission, 1)
+
+    expect(second_session.state).to eq('completed')
+    expect(second_session.doc_timestamp_state).to eq('applied')
+    expect(second_session.validation_report['validation_scope']).to eq('current_revision')
+    old_timestamp = second_session.validation_report['signatures'].find { |s| s['kind'] == 'timestamp' }
+    expect(old_timestamp).to include('intact' => true, 'tsa_trusted' => false, 'verification_scope' => 'integrity')
+    expect(old_timestamp['timestamp_time']).to be_nil
+    expect(Qes::Validator.accepted_signature?(old_timestamp.symbolize_keys)).to be false
+    expect(second_session.validation_report['doc_timestamp']).to include('tsa_trusted' => true,
+                                                                         'verification_scope' => 'full')
+    expect(second_session.validation_report['doc_timestamp']['timestamp_time']).to be_present
+    expect(second_session.validation_report['signer_validation']).to include('time_source' => 'timestamp')
+    expect(second_session.tbs_document.download).to start_with(first_session.final_document.download)
+
+    # Běžný veřejný validátor nadále vyžaduje důvěryhodnost všech revizí.
+    report = Qes::Validator.call(second_session.final_document.download, trust_roots: QesHelpers.trust_roots)
+    expect(report[:ok]).to be false
+  end
+
+  it 'rejects an untrusted new DocTS while completing a later signer' do
+    allow(Qes::Ltv).to receive(:fetch_first_crl).and_return(QesHelpers.crl)
+    submission = QesHelpers.build_qes_submission(count: 2)
+    sign!(submission, 0)
+    Qes::Config[:tsa_url] = 'http://tsa.test'
+    allow(Qes).to receive(:tsa_trust_roots).and_return([QesHelpers.tsa_root_certificate])
+    stub_tsa!
+    allow(Qes::DocTimestamp).to receive(:apply) do |pdf, **|
+      [QesHelpers.append_timestamp(pdf, certificate: QesHelpers.self_signed_tsa_certificate), 'applied']
+    end
+
+    expect { sign!(submission, 1) }
+      .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:validation_failed) }
+    expect(QesSession.completed.where(submission:).count).to eq(1)
+  end
+
   it 'chains the next TBS on the previous final document and keeps all signatures intact' do
     QesHelpers.with_crl_server do
       submission = QesHelpers.build_qes_submission(count: 2)
@@ -35,6 +82,9 @@ RSpec.describe 'QES chained signatures' do
       first, first_session = sign!(submission, 0)
       _second, second_session = sign!(submission, 1)
 
+      manifest = first_session.tbs_document.blob.metadata.fetch('qes_document_manifest')
+      expect(manifest).to eq(Qes::TbsDocument.manifest_for(submission))
+      expect(second_session.tbs_document.blob.metadata['qes_document_manifest']).to eq(manifest)
       first_final = first_session.final_document.download
       second_tbs = second_session.tbs_document.download
       second_final = second_session.final_document.download
@@ -65,6 +115,9 @@ RSpec.describe 'QES chained signatures' do
       _first, first_session = sign!(submission, 0, field_index: 0, complete: false)
       _second, second_session = sign!(submission, 0, field_index: 1, complete: false)
 
+      manifest = first_session.tbs_document.blob.metadata.fetch('qes_document_manifest')
+      expect(manifest).to eq(Qes::TbsDocument.manifest_for(submission))
+      expect(second_session.tbs_document.blob.metadata['qes_document_manifest']).to eq(manifest)
       first_final = first_session.final_document.download
       second_tbs = second_session.tbs_document.download
       second_final = second_session.final_document.download
@@ -111,5 +164,32 @@ RSpec.describe 'QES chained signatures' do
       expect(Array(tbs.pages[1][:Contents]).size).to be > Array(base.pages[1][:Contents]).size
       expect(Array(tbs.pages[0][:Contents]).size).to eq(Array(base.pages[0][:Contents]).size)
     end
+  end
+  it 'uses only included documents for offsets and chained field rendering' do
+    submission = QesHelpers.build_qes_submission(attachment_count: 2, qes_attachment_index: 1)
+    submitter = submission.submitters.first
+    excluded, included = submission.template_schema.pluck('attachment_uuid')
+    text_fields = Qes.template_fields(submission).select { |field| field['type'] == 'text' }
+    condition_field = text_fields.first
+    schema = submission.template_schema.deep_dup
+    schema.first['conditions'] = [{ 'field_uuid' => condition_field['uuid'], 'action' => 'not_empty' }]
+    submission.update!(template_schema: schema)
+    submitter.update!(values: { text_fields.last['uuid'] => 'Included contract' })
+
+    expect(Submissions.filtered_conditions_schema(submission).pluck('attachment_uuid')).to eq([included])
+    expect(Qes::TbsDocument.page_offsets(submission)).to eq(included => 0)
+    base = Qes::TbsDocument.merged_document(submitter)
+    expect(base.pages.size).to eq(1)
+
+    pdfs = Submissions::GenerateResultAttachments.generate_pdfs(
+      submitter, base:, page_offsets: Qes::TbsDocument.page_offsets(submission)
+    )
+    expect(pdfs.keys).to eq([included])
+    expect(pdfs).not_to have_key(excluded)
+
+    field = Qes.template_fields(submission).find { |f| f['type'] == 'qes' }
+    tbs = Qes::TbsDocument.build(submitter, field)
+    text = Pdfium::Document.open_io(StringIO.new(tbs)) { |pdf| pdf.get_page(0).text }
+    expect(text).to include('Included contract', I18n.t('qes.stamp.title', locale: submitter.account.locale))
   end
 end

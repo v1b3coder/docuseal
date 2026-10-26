@@ -29,7 +29,9 @@ module Submitters
         WebhookUrls.enqueue_events(submitter, 'form.started')
       end
 
-      update_submitter!(submitter, params, request, validate_required:)
+      submitter.with_lock do
+        update_submitter!(submitter, params, request, validate_required:)
+      end
 
       submitter.submission.save!
 
@@ -74,20 +76,8 @@ module Submitters
       submitter.ua = request.user_agent
       submitter.timezone = request.params[:timezone]
 
-      submitter.values = merge_default_values(submitter)
-
       required_field_uuids_acc = Set.new
-
-      submitter.values = maybe_remove_condition_values(submitter, required_field_uuids_acc:)
-
-      formula_values = build_formula_values(submitter)
-
-      if formula_values.present?
-        submitter.values = submitter.values.merge(formula_values)
-        submitter.values = maybe_remove_condition_values(submitter, required_field_uuids_acc:)
-      end
-
-      submitter.values = replace_current_date_placeholders(submitter)
+      Qes::SigningValues.finalize!(submitter, required_field_uuids_acc:)
 
       required_field_uuids_acc.each do |uuid|
         next if submitter.values[uuid].present?
@@ -168,11 +158,13 @@ module Submitters
       end
     end
 
-    def merge_default_values(submitter, with_verification: true)
+    def merge_default_values(submitter, with_verification: true, validate_verification: true, with_stamp: true)
       default_values = submitter.submission.template_fields.each_with_object({}) do |field, acc|
         next if field['submitter_uuid'] != submitter.uuid
 
         if field['type'] == 'stamp'
+          next unless with_stamp
+
           acc[field['uuid']] ||=
             Submitters::CreateStampAttachment.build_attachment(
               submitter,
@@ -186,7 +178,7 @@ module Submitters
           acc[field['uuid']] =
             if submitter.submission_events.exists?(event_type: :complete_verification)
               I18n.t(:verified, locale: :en)
-            elsif field['required']
+            elsif field['required'] && validate_verification
               raise ValidationError, 'ID Not Verified'
             end
 

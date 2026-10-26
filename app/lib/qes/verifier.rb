@@ -21,7 +21,9 @@ module Qes
 
       {
         file: { name:, size: pdf_bytes.bytesize, sha256: Digest::SHA256.hexdigest(pdf_bytes) },
-        verdict: compute_verdict(signatures, qes, modified),
+        verdict: compute_verdict(signatures, qes, modified, inspection: report[:inspection],
+                                 coverage_valid: report[:coverage_valid]),
+        inspection: report[:inspection],
         intact: report[:intact],
         trusted: report[:trusted],
         modified:,
@@ -52,11 +54,13 @@ module Qes
       []
     end
 
-    def compute_verdict(signatures, qes, modified)
+    def compute_verdict(signatures, qes, modified, inspection: 'complete', coverage_valid: false)
+      return 'invalid' unless inspection == 'complete'
       return 'unsigned' if signatures.empty?
       return 'invalid' if signatures.any? { |signature| !signature[:intact] } || modified
+      return 'invalid' unless signatures.last[:coverage] == 'full' || coverage_valid
+      return 'valid_untrusted' unless signatures.all? { |signature| Qes::Validator.accepted_signature?(signature) }
       return 'valid_unqualified' if qes.empty?
-      return 'valid_untrusted' if qes.any? { |signature| !signature[:trusted] }
 
       'valid'
     end
@@ -83,12 +87,15 @@ module Qes
         level: signature[:level],
         intact: signature[:intact],
         trusted: signature[:trusted],
+        tsa_trusted: signature[:tsa_trusted],
         coverage: signature[:coverage],
         common_name: signature[:common_name],
         subject: signature[:subject],
         issuer: signature[:issuer],
         serial: signature[:serial],
         signing_time: signature[:signing_time],
+        validated_at_time: signature[:validated_at_time],
+        time_source: signature[:time_source],
         not_before: signature[:not_before],
         not_after: signature[:not_after],
         chain: signature[:chain] || []
