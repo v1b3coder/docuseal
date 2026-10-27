@@ -15,8 +15,8 @@ module Qes
     before_action :load_session
 
     def show
-      return render json: completed_payload if @session.state == 'completed'
       return render_qes_error_with(:expired_token, :gone) if @session.expired?
+      return render json: completed_payload if @session.state == 'completed'
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
 
       if @session.state == 'awaiting_app'
@@ -218,8 +218,7 @@ module Qes
         signing_time: @session.signing_time&.utc&.iso8601,
         validation: @session.validation_report,
         revocation: @session.validation_report&.[]('revocation'),
-        completed_at: @session.completed_at&.utc&.iso8601,
-        values: Qes::ValueValidator.non_qes_values(@session.submitter.values, @session.submitter)
+        completed_at: @session.completed_at&.utc&.iso8601
       }
     end
 
