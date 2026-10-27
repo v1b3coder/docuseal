@@ -229,15 +229,19 @@ module Qes
             raise FetchError, 'CRL distribution point does not match certificate'
           end
         when 1
-          raise FetchError, 'CRL only contains CA certificates' if node.value && !certificate_authority?(cert)
+          if boolean_true?(node) && certificate_authority?(cert)
+            raise FetchError, 'CRL only contains user certificates'
+          end
         when 2
-          raise FetchError, 'CRL only contains user certificates' if node.value && certificate_authority?(cert)
+          if boolean_true?(node) && !certificate_authority?(cert)
+            raise FetchError, 'CRL only contains CA certificates'
+          end
         when 3
           raise FetchError, 'CRL reason scope is not supported'
         when 4
-          raise FetchError, 'Indirect CRLs are not supported' if node.value
+          raise FetchError, 'Indirect CRLs are not supported' if boolean_true?(node)
         when 5
-          raise FetchError, 'CRL only contains attribute certificates' if node.value
+          raise FetchError, 'CRL only contains attribute certificates' if boolean_true?(node)
         end
       end
     rescue OpenSSL::ASN1::ASN1Error
@@ -280,6 +284,13 @@ module Qes
       else
         []
       end
+    end
+
+    # Implicitně tagovaný BOOLEAN v issuingDistributionPoint: OpenSSL vrací
+    # surový string ("\xFF" / "\x00"), kde je i "\x00" truthy.
+    def boolean_true?(node)
+      value = node.value
+      value == true || value == "\xFF".b
     end
 
     def certificate_authority?(cert)
