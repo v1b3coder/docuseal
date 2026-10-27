@@ -178,17 +178,18 @@ module Qes
 
         # Dlouhé síťové operace (CRL fetch, TSA, PDF) mimo `with_lock`; transakce
         # pak drží jen zápis stavu a dokumentů (M20).
+        stored_base = session.tbs_document&.blob&.metadata&.fetch('qes_base_digest', nil)
+        if stored_base.present? && session.respond_to?(:submitter)
+          current_base = Qes::TbsDocument.base_digest(session.submitter)
+          if current_base != stored_base
+            raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
+          end
+        end
+
         Qes::CmsBuilder.verify_signature!(session.certificate, signature,
                                           session.signed_attrs_der, session.hash_algorithm)
 
         revocation_data = ltv_values
-
-        stored_base = session.tbs_document&.blob&.metadata&.fetch('qes_base_digest', nil)
-        current_base = Qes::TbsDocument.base_digest(session.submitter)
-        if stored_base.present? && current_base != stored_base
-          raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
-        end
-
         cms_der = build_cms(signature)
         signed_pdf = embed(cms_der)
         report = validate(signed_pdf)
