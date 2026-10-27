@@ -45,6 +45,7 @@ module Qes
       require_ltv: false,
       ltv_allowed_hosts: nil,
       android_cert_sha256: nil,
+      test_crl_path: nil,
       ios_team_id: nil,
       expiry_job_interval: 60
     }.freeze

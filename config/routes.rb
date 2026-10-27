@@ -167,6 +167,7 @@ Rails.application.routes.draw do
 
   get '.well-known/apple-app-site-association', to: 'qes/well_known#apple_app_site_association'
   get '.well-known/assetlinks.json', to: 'qes/well_known#assetlinks'
+  get 'qes-test/root.crl', to: 'qes/test_crl#show'
 
   resources :submit_form, only: %i[], path: '' do
     get :success, on: :collection
