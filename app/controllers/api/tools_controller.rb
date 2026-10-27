@@ -20,10 +20,16 @@ module Api
 
       trusted_certs = Accounts.load_trusted_certs(current_account)
       is_checksum_found = CompletedDocument.exists?(sha256: Base64.urlsafe_encode64(Digest::SHA256.digest(file)))
+      signatures =
+        if Qes::Config[:enabled]
+          Qes::PdfiumTrust.report(StringIO.new(file), trusted_certs)
+        else
+          VerifyPdfSignature.call(StringIO.new(file), trusted_certs)
+        end
 
       render json: {
         checksum_status: is_checksum_found ? 'verified' : 'not_found',
-        signatures: VerifyPdfSignature.call(StringIO.new(file), trusted_certs).map do |sig|
+        signatures: signatures.map do |sig|
           {
             verification_result: sig.messages.map { |m| { type: m.status || :info, content: m.text } },
             signer_name: sig.common_name,
