@@ -47,7 +47,8 @@ module Qes
       android_cert_sha256: nil,
       test_crl_path: nil,
       ios_team_id: nil,
-      expiry_job_interval: 60
+      expiry_job_interval: 60,
+      completed_session_ttl: 86_400
     }.freeze
 
     class << self
