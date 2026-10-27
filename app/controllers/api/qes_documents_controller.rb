@@ -24,12 +24,17 @@ module Api
     def create
       Qes::RateLimiter.check!(request.remote_ip)
 
-      data = Qes::PdfUpload.upload_data(params)
-      data = Qes::PdfSource.normalize_rotation(data) || data
+      original = Qes::PdfUpload.upload_data(params)
+      normalized = Qes::PdfSource.normalize_rotation(original)
+      data = normalized || original
 
       template, document = build_template(data)
 
-      render json: payload(template, document, data), status: :created
+      render json: payload(template, document, data).merge(
+        source_sha256: Digest::SHA256.hexdigest(original),
+        document_sha256: Digest::SHA256.hexdigest(data),
+        normalized: normalized.present?
+      ), status: :created
     end
 
     private
