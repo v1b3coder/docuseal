@@ -127,12 +127,20 @@ module Qes
     end
   end
 
+  # Povinné QES pole zmrazená při vzniku submissionu. `template_fields` je
+  # snapshot, který se nemění přidáním pole do šablony ani změnou `required`
+  # přes API; `nil` je jen u starých submissions bez snapshotu (N1).
+  def self.required_qes_fields(submission)
+    fields = submission.template_fields.nil? ? (submission.template&.fields || []) : submission.template_fields
+
+    fields.select { |field| field['type'] == 'qes' && field['required'] }
+  end
+
   def self.missing_required_sessions(submitter)
     sessions = submitter.qes_sessions.completed.to_a
-    fields = submitter.submission.template&.fields.presence || template_fields(submitter.submission)
 
-    fields.select do |field|
-      next unless field['type'] == 'qes' && field['required'] && field['submitter_uuid'] == submitter.uuid
+    required_qes_fields(submitter.submission).select do |field|
+      next unless field['submitter_uuid'] == submitter.uuid
 
       sessions.none? { |session| session.field_uuid == field['uuid'] && session_satisfies_level?(session, field) }
     end
