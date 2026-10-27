@@ -58,7 +58,11 @@ module Qes
       return render_qes_error_with(:wrong_state, :conflict) unless @session.state.in?(%w[awaiting_app app_opened])
 
       provider = provider_for(@session)
-      certificate = Qes::CertificateInfo.parse(certificate_der).certificate
+      info = Qes::CertificateInfo.parse(certificate_der)
+      # Nejdřív platnost/úroveň certifikátu, pak řetěz: expirovaný certifikát
+      # musí vrátit certificate_expired, ne not_trusted (N3).
+      info.validate!(level_required: @session.level_required, key_location:)
+      certificate = info.certificate
       Qes::Validator.verify_chain!(certificate, chain, provider.trust_roots)
 
       # CRL fetch (síť) mimo DB transakci; transakce pak drží jen zápis (M20).
