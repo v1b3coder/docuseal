@@ -10,10 +10,61 @@ module Qes
       def initialize(session)
         @session = session
       end
+      # TBS se staví před přijetím certifikátu (`GET /document`), aby appka
+      # mohla zobrazit přesně ty bajty, které se budou podepisovat. Rezerva
+      # `/Contents` je pevná (`QES_SIGNATURE_RESERVE`), nezávislá na certifikátu;
+      # finální CMS se do ní musí vejít (`signature_size_exceeded`).
+      def prepare_document
+        return session.tbs_document if session.tbs_document.attached?
 
-      # TBS se staví až po přijetí certifikátu (`data_to_sign`): rezerva
-      # `/Contents` musí pojmout finální CMS a její velikost závisí na CRL
-      # podepisujícího (SPEC § 7.1).
+        candidate = Submitter.find(session.submitter_id)
+        original_values = candidate.values.deep_dup
+        Qes::SigningValues.prepare!(candidate)
+        # PDF helpers must see the prepared values, including document conditions.
+        signers = candidate.submission.submitters.to_a
+        candidate.submission.association(:submitters).target = signers.map do |signer|
+          signer.id == candidate.id ? candidate : signer
+        end
+        values_snapshot = Qes::ValueValidator.non_qes_values(candidate.values, candidate)
+        manifest = Qes::TbsDocument.document_manifest(candidate)
+        base_digest = Qes::TbsDocument.base_digest(candidate)
+        tbs_pdf = Qes::TbsDocument.build(
+          candidate, session.field,
+          signature_size: Qes::Config[:signature_reserve], manifest:
+        )
+
+        # Bajty musí být uložené před zveřejněním dokumentu appce.
+        tbs_blob = upload_document(tbs_pdf, 'qes-tbs',
+                                   metadata: { qes_values: values_snapshot, qes_document_manifest: manifest,
+                                               qes_base_digest: base_digest })
+
+        session.with_lock do
+          return session.tbs_document if session.tbs_document.attached?
+
+          unless session.state.in?(%w[awaiting_app app_opened])
+            raise ClientError.new(:wrong_state, 'Session is not awaiting a document')
+          end
+
+          session.submitter.lock!
+          if session.submitter.values != original_values
+            raise ClientError.new(:values_changed, 'Field values changed during document preparation')
+          end
+
+          session.submitter.values = candidate.values
+          candidate.attachments_attachments.select(&:new_record?).each do |attachment|
+            attachment.save!
+          end
+          session.submitter.save!
+          session.tbs_document.attach(tbs_blob)
+          session.update!(document_digest: Qes::TbsDocument.document_digest(tbs_pdf),
+                           failure_code: nil, failure_message: nil)
+        end
+
+        session.tbs_document
+      end
+
+      # Certifikát se ověřuje až po kontrole dokumentu; TBS už je uložený
+      # a `POST /certificate` nad ním jen vytvoří podepsané atributy.
       def data_to_sign(certificate_der, chain: [], key_location: nil, app_metadata: nil, crls: nil)
         chain = normalize_chain(chain)
         # `CertificateInfo.parse` vrací `ClientError(:invalid_certificate)` místo
@@ -30,22 +81,10 @@ module Qes
         # CRL se stahují v controlleru před přípravou TBS; tady se jen ověří.
         Qes::Ltv.check_revoked!(certificate, chain:, crls:)
 
-        candidate = Submitter.find(session.submitter_id)
-        original_values = candidate.values.deep_dup
-        Qes::SigningValues.prepare!(candidate)
-        # PDF helpers must see the prepared values, including document conditions.
-        signers = candidate.submission.submitters.to_a
-        candidate.submission.association(:submitters).target = signers.map do |signer|
-          signer.id == candidate.id ? candidate : signer
-        end
-        values_snapshot = Qes::ValueValidator.non_qes_values(candidate.values, candidate)
-        manifest = Qes::TbsDocument.document_manifest(candidate)
-        base_digest = Qes::TbsDocument.base_digest(candidate)
-        tbs_pdf = Qes::TbsDocument.build(
-          candidate, session.field,
-          signature_size: tbs_signature_size(certificate, chain), manifest:
-        )
+        prepare_document
+        ensure_values_unchanged!
 
+        tbs_pdf = session.tbs_document.download
         data = Qes::TbsDocument.signed_data(StringIO.new(tbs_pdf), Qes::TbsDocument.byte_range(tbs_pdf))
 
         prepared = Qes::CmsBuilder.prepare(
@@ -56,33 +95,16 @@ module Qes
           digest_algorithm: session.hash_algorithm
         )
 
-        # Bajty musí být uložené před zveřejněním stavu awaiting_signature.
-        tbs_blob = upload_document(tbs_pdf, 'qes-tbs',
-                                   metadata: { qes_values: values_snapshot, qes_document_manifest: manifest,
-                                               qes_base_digest: base_digest })
-
         session.with_lock do
           unless session.state.in?(%w[awaiting_app app_opened])
             raise ClientError.new(:wrong_state, 'Session is not awaiting a certificate')
           end
 
-          session.submitter.lock!
-          if session.submitter.values != original_values
-            raise ClientError.new(:values_changed, 'Field values changed during document preparation')
-          end
-
-          session.submitter.values = candidate.values
-          candidate.attachments_attachments.select(&:new_record?).each do |attachment|
-            attachment.save!
-          end
-          session.submitter.save!
-          session.tbs_document.attach(tbs_blob)
           session.update!(
-            document_digest: Qes::TbsDocument.document_digest(tbs_pdf),
             signed_attrs_der: prepared[:signed_attrs_der],
             signing_time: Qes::CmsBuilder.signing_time_from(prepared[:signed_attrs_der]),
             certificate_info: certificate_info,
-            certificate_chain: [certificate_der, *normalize_chain(chain)].map { |der| Base64.strict_encode64(der) },
+            certificate_chain: [certificate_der, *chain].map { |der| Base64.strict_encode64(der) },
             level: certificate_info[:level],
             key_location: key_location,
             app_metadata: app_metadata,
@@ -296,6 +318,14 @@ module Qes
         raise ClientError.new(:document_missing, 'Prepared document or signed value snapshot is missing')
       end
 
+      def ensure_values_unchanged!
+        snapshot = prepared_values!
+        current = Qes::ValueValidator.non_qes_values(session.submitter.values, session.submitter)
+        return if current == snapshot
+
+        raise ClientError.new(:values_changed, 'Field values changed after document preparation')
+      end
+
       def upload_document(bytes, prefix, metadata: {})
         ActiveStorage::Blob.create_and_upload!(
           io: StringIO.new(bytes),
@@ -313,18 +343,6 @@ module Qes
 
       def normalize_chain(chain)
         Array(chain).map { |cert| cert.is_a?(OpenSSL::X509::Certificate) ? cert.to_der : cert }
-      end
-
-      # Rezerva `/Contents` = horní odhad CMS (bez LTV, to jde do DSS) + marže
-      # pro TSA token (SPEC § 7.1); minimum je `QES_SIGNATURE_SIZE`.
-      def tbs_signature_size(certificate, chain)
-        minimum = Qes::Config[:signature_min_size].to_i
-        estimate = Qes::CmsBuilder.estimate_size(
-          certificate:, chain:, signing_time: Time.now.utc,
-          digest_algorithm: session.hash_algorithm
-        )
-
-        [minimum, estimate + Qes::Config[:signature_size_margin].to_i].max
       end
 
       def certificate_chain_der

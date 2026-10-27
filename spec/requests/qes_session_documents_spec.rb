@@ -69,13 +69,28 @@ RSpec.describe 'QES token document endpoint', type: :request do
     expect(response.parsed_body['error']).to eq('expired_token')
   end
 
-  %w[created prepared awaiting_app app_opened signed embedded validated].each do |state|
+  %w[created prepared signed embedded validated].each do |state|
     it "does not serve a document in #{state}" do
       session.update!(state:)
       get '/qes/sessions/document/document'
       expect(response).to have_http_status(:conflict)
       expect(response.parsed_body['error']).to eq('wrong_state')
     end
+  end
+
+  it 'serves the unsigned TBS before the certificate and does not rebuild it on certificate' do
+    session
+    get '/qes/sessions/document/document'
+    expect(response).to have_http_status(:ok)
+    tbs = session.reload.tbs_document.download
+    expect(response.body.b).to eq(tbs)
+    expect(session.state).to eq('awaiting_app')
+
+    post '/qes/sessions/document/certificate', params: certificate_params
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.state).to eq('awaiting_signature')
+    expect(session.tbs_document.download).to eq(tbs)
+    expect(response.parsed_body['document_digest']).to eq(session.document_digest)
   end
 
   %w[completed failed cancelled declined].each do |state|

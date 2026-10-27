@@ -30,10 +30,11 @@ module Qes
     DEFAULTS = {
       enabled: false,
       session_ttl: 600,
+      review_ttl: 900,
       pdf_max_bytes: 25.megabytes,
       signature_size: 20_000,
       signature_min_size: 20_000,
-      signature_size_margin: 16_384,
+      signature_reserve: 65_536,
       seal_pkcs_path: nil,
       seal_pkcs_password: nil,
       deep_link_base: 'dokulachtan://sign',

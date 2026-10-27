@@ -46,20 +46,6 @@ module Qes
       cms_der
     end
 
-    # Horní odhad velikosti finálního CMS pro rezervu `/Contents` (SPEC § 7.1).
-    # Placeholder signatury má velikost `QES_SIGNATURE_SIZE` (skutečná signatura
-    # RSA/ECDSA je kratší), takže se finální CMS do odhadu vejde; TSA token
-    # a případný růst CRL mezi fázemi kryje `QES_SIGNATURE_SIZE_MARGIN`.
-    def estimate_size(certificate:, chain: [], signing_time: Time.current,
-                      digest_algorithm: 'sha256')
-      size = Qes::Config[:signature_size].to_i
-      creator = build_creator(certificate:, chain:, signing_time:, digest_algorithm:,
-                              signature_size: size)
-      creator.external_signature = ("\x00".b * size)
-
-      creator.create(OpenSSL::Digest.digest(digest_algorithm, ''), type: :pades).to_der.bytesize
-    end
-
     # Přečte `signingTime` z DER `SET` podepsaných atributů (aby byl v obou fázích identický).
     def signing_time_from(signed_attrs_der)
       attrs = OpenSSL::ASN1.decode(signed_attrs_der)

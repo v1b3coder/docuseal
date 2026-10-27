@@ -30,8 +30,22 @@ module Qes
     def document
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
       return render_qes_error_with(:expired_token, :gone) if @session.expired?
-      return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'awaiting_signature'
+      unless @session.state.in?(%w[awaiting_app app_opened awaiting_signature])
+        return render_qes_error_with(:wrong_state, :conflict)
+      end
+
+      # TBS se staví před certifikátem; appka tak může zobrazit přesně ty
+      # bajty, které se budou podepisovat, a klíč se odemyká až po kontrole.
+      if !@session.tbs_document.attached? && @session.state == 'awaiting_signature'
+        return render_qes_error_with(:document_missing, :conflict)
+      end
+
+      provider_for(@session).prepare_document unless @session.tbs_document.attached?
       return render_qes_error_with(:document_missing, :conflict) unless @session.tbs_document.attached?
+
+      @session.update!(
+        expires_at: [@session.expires_at, Time.current + Qes::Config[:review_ttl].to_i.seconds].compact.max
+      )
 
       response.set_header('Cache-Control', 'no-store')
       send_data @session.tbs_document.download, type: 'application/pdf', disposition: 'inline',
@@ -52,6 +66,7 @@ module Qes
       if @session.state == 'awaiting_signature'
         return render_qes_error_with(:wrong_state, :conflict) unless same_certificate?(certificate_der)
 
+        @session.update!(expires_at: Time.current + Qes::Config[:session_ttl].to_i.seconds)
         return render json: certificate_payload
       end
 
@@ -71,6 +86,7 @@ module Qes
       provider.data_to_sign(certificate_der, chain:, key_location:,
                                             app_metadata: params[:app].presence,
                                             crls: crls || [])
+      @session.update!(expires_at: Time.current + Qes::Config[:session_ttl].to_i.seconds)
 
       Qes.log(@session)
 

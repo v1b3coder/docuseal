@@ -24,18 +24,27 @@ RSpec.describe Qes::Providers::MobileApp do
     expect(session.completed_at).to be_nil
   end
 
-  it 'rejects values changed while the document was being prepared' do
+  it 'builds the TBS before the certificate and reuses it for signing attributes' do
+    provider.prepare_document
+    tbs = session.reload.tbs_document.download
+    expect(session.state).to eq('awaiting_app')
+
+    prepare_document
+
+    expect(session.reload.state).to eq('awaiting_signature')
+    expect(session.tbs_document.download).to eq(tbs)
+  end
+
+  it 'rejects values changed after the document was prepared' do
+    provider.prepare_document
     field = session.submission.template_fields.find { |item| item['type'] == 'text' }
-    allow(Qes::CmsBuilder).to receive(:prepare).and_wrap_original do |original, **args|
-      session.submitter.update!(values: { field['uuid'] => 'Changed during preparation' })
-      original.call(**args)
-    end
+    session.submitter.update!(values: { field['uuid'] => 'Changed after preparation' })
 
     expect { prepare_document }.to raise_error(Qes::ClientError) do |error|
       expect(error.code).to eq(:values_changed)
     end
     expect(session.reload.state).to eq('awaiting_app')
-    expect(session.tbs_document).not_to be_attached
+    expect(session.tbs_document).to be_attached
   end
 
   it 'does not complete or publish documents when the configured seal fails' do
@@ -141,18 +150,17 @@ RSpec.describe Qes::Providers::MobileApp do
     expect(session.submitter.reload.values).to eq(original_values)
   end
 
-  it 'rolls prepared values back if the state transition fails' do
+  it 'keeps the prepared TBS when the state transition fails' do
     field = session.submission.template_fields.find { |item| item['type'] == 'text' }
     session.submitter.update!(values: { field['uuid'] => '{{date}}' })
-    original_values = session.submitter.values.deep_dup
     allow(Qes::SessionManager).to receive(:transition!).and_call_original
     allow(Qes::SessionManager).to receive(:transition!).with(session, 'awaiting_signature')
                                                      .and_raise(Qes::InvalidTransition, 'transition failed')
 
     expect { prepare_document }.to raise_error(Qes::InvalidTransition, 'transition failed')
     expect(session.reload.state).to eq('awaiting_app')
-    expect(session.tbs_document).not_to be_attached
-    expect(session.submitter.reload.values).to eq(original_values)
+    expect(session.tbs_document).to be_attached
+    expect(session.submitter.reload.values[field['uuid']]).to be_present
   end
 
   %w[qes-signed qes-final].each do |prefix|
