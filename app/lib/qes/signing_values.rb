@@ -48,7 +48,7 @@ module Qes
     # Stejná příprava pro dokončení i PDF k podpisu. Zůstává v QES vrstvě,
     # aby `lib/submitters/submit_values.rb` zůstal blízko upstreamu (nález 3.2).
     def finalize!(submitter, required_field_uuids_acc: nil, **options)
-      if submitter.qes_sessions.completed.exists?
+      if Qes.active_for?(submitter.submission) && submitter.qes_sessions.completed.exists?
         Qes::ValueValidator.validate_signed_values!(submitter.values, submitter)
 
         # Podepsané hodnoty se už nepřepočítávají, ani po změně data či vzorce.

@@ -89,6 +89,16 @@ module Qes
 
   # Trust roots pro ověření QES/AdES (SPEC § 5.2 a § 7.5). Načítá se ze
   # stejné konfigurace jako při podpisu, aby ověření a podpis měly jeden zdroj pravdy.
+  def self.enabled?
+    Config[:enabled]
+  end
+
+  # QES hooky se mají spouštět jen při zapnutém QES a existenci QES pole;
+  # jinak zbytečně dotazují qes_sessions při každém uložení (poznámka auditu).
+  def self.active_for?(submission)
+    enabled? && template_fields(submission).any? { |field| field['type'] == 'qes' }
+  end
+
   def self.trust_roots
     paths = Config[:trust_roots]
     paths = paths.split(',') if paths.is_a?(String)
@@ -138,9 +148,12 @@ module Qes
   end
 
   def self.missing_required_sessions(submitter)
+    fields = required_qes_fields(submitter.submission)
+    return [] if fields.empty?
+
     sessions = submitter.qes_sessions.completed.to_a
 
-    required_qes_fields(submitter.submission).select do |field|
+    fields.select do |field|
       next unless field['submitter_uuid'] == submitter.uuid
 
       sessions.none? { |session| session.field_uuid == field['uuid'] && session_satisfies_level?(session, field) }
