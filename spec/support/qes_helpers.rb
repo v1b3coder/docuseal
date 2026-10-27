@@ -5,6 +5,10 @@ require 'pathname'
 # Pomocné metody pro QES testy: fixtures z hlavního repa (`test/certs/pki`)
 # a lokální HTTP server s CRL (certifikáty mají CRL DP na 127.0.0.1:8765).
 module QesHelpers
+  # `build_qes_submission` se volá i z factory (`:qes_session`), kde `self` není example
+  # ale FactoryBot evaluator — proto `allow` potřebujeme i na úrovni modulu.
+  extend RSpec::Mocks::ExampleMethods
+
   TEST_DIR = Pathname.new(ENV['QES_TEST_DIR'] || File.expand_path('../../../test', __dir__))
   CRL_PORT = 8765
 
@@ -44,6 +48,19 @@ module QesHelpers
     build_qes_submission(account:, level:).submitters.order(:id).first
   end
 
+  # PNG náhledy stránek jsou ~97 % ceny `create(:template)` (render v 200 DPI +
+  # libvips + ActiveStorage upload) a QES specy je nikdy nečtou — TBS se staví
+  # z dokumentu samotného. `number_of_pages` se počítá dál.
+  #
+  # Záměrně stub v supportu, ne `previews:` transient ve `spec/factories/templates.rb`:
+  # factory je upstream soubor a fork ho nemodifikuje (docs/08, docs/18).
+  def without_page_previews
+    RSpec::Mocks.with_temporary_scope do
+      allow(Templates::ProcessDocument).to receive(:generate_document_preview_images).and_return([])
+      yield
+    end
+  end
+
   # Vytvoří submission s N signery; každý má vlastní pole `qes` a striktní
   # pořadí (`submitters_order: preserved`, SPEC § 4.6).
   def build_qes_submission(account: nil, level: 'ades', count: 1, attachment_count: 1,
@@ -51,8 +68,10 @@ module QesHelpers
                            qes_fields_per_submitter: 1)
     account ||= FactoryBot.create(:account)
     user = FactoryBot.create(:user, account:)
-    template = FactoryBot.create(:template, account:, author: user, only_field_types: field_types,
-                                submitter_count: count, attachment_count:)
+    template = without_page_previews do
+      FactoryBot.create(:template, account:, author: user, only_field_types: field_types,
+                                      submitter_count: count, attachment_count:)
+    end
     attachment_uuid = template.schema[qes_attachment_index]['attachment_uuid']
 
     template.preferences = template.preferences.merge('submitters_order' => 'preserved') if count > 1
@@ -194,8 +213,15 @@ module QesHelpers
     tsa_root_key_and_certificate.last
   end
 
+  # Testovací TSA klíče se generují jednou za proces, ne za každý example:
+  # 2048bit RSA keygen je ~42 ms a sada ho volá 152× (docs/21 § 4). Certy
+  # jsou jen testovací, takže sdílení mezi example je bezpečné.
+  # `not_after` je záměrně +1 den (ne +1 h): `validator_spec` posouvá čas o
+  # `leaf.not_after + 3600` a cachovaný cert by jinak byl expirovaný.
+  TSA_KEYS = {}
+
   def tsa_root_key_and_certificate
-    @tsa_root_key_and_certificate ||= begin
+    TSA_KEYS[:root] ||= begin
       key = OpenSSL::PKey::RSA.new(2048)
       certificate = OpenSSL::X509::Certificate.new
       certificate.version = 2
@@ -217,7 +243,7 @@ module QesHelpers
   end
 
   def tsa_key_and_certificate
-    @tsa_key_and_certificate ||= begin
+    TSA_KEYS[:tsa] ||= begin
       key = OpenSSL::PKey::RSA.new(2048)
       certificate = OpenSSL::X509::Certificate.new
       certificate.version = 2
@@ -226,7 +252,7 @@ module QesHelpers
       certificate.issuer = tsa_root_certificate.subject
       certificate.public_key = key.public_key
       certificate.not_before = Time.current - 60
-      certificate.not_after = Time.current + 3600
+      certificate.not_after = Time.current + 1.day
       factory = OpenSSL::X509::ExtensionFactory.new
       factory.subject_certificate = certificate
       factory.issuer_certificate = tsa_root_certificate
@@ -311,7 +337,16 @@ module QesHelpers
 
   # Self-signed certifikát s podvrženými QCStatements (QcCompliance + QcSSCD).
   # Musí být odmítnutý — nevede k trust rootu (SPEC § 5.2).
+  # Klíč je cachovaný (keygen je 42 ms), certifikát vrací čerstvou kopii:
+  # `revocation_pipeline_spec` ho přepodepisuje (issuer + CRL DP) a mutace
+  # cachovaného objektu by se propsala do dalších example.
   def self_signed_qc_sscd_certificate
+    key, cached = SELF_SIGNED_QC_SSCD[:pair] ||= build_self_signed_qc_sscd_pair
+
+    [key, OpenSSL::X509::Certificate.new(cached.to_der)]
+  end
+
+  def build_self_signed_qc_sscd_pair
     key = OpenSSL::PKey::RSA.new(2048)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
@@ -320,7 +355,7 @@ module QesHelpers
     cert.issuer = cert.subject
     cert.public_key = key.public_key
     cert.not_before = Time.current - 60
-    cert.not_after = Time.current + 3600
+    cert.not_after = Time.current + 1.day
 
     factory = OpenSSL::X509::ExtensionFactory.new
     factory.subject_certificate = cert
@@ -331,6 +366,8 @@ module QesHelpers
 
     [key, cert]
   end
+
+  SELF_SIGNED_QC_SSCD = {}
 
   def qc_statements_der
     OpenSSL::ASN1::Sequence(
@@ -369,4 +406,11 @@ end
 
 RSpec.configure do |config|
   config.include QesHelpers
+
+  # `RateLimit::STORE` je proces-globální `MemoryStore` (ne `Rails.cache`) a SQLite po
+  # rollbacku recykluje `submitter.id`, takže se počítadla z předchozích example
+  # sčítají: `spec/system/signing_form_spec.rb` (2FA) pak spadne na `too_many_attempts`
+  # a `Send verification code` neodešle e-mail. V produkci je sdílený stav žádoucí,
+  # v testech potřebujeme čistý start pro každý example.
+  config.before { RateLimit::STORE.clear }
 end

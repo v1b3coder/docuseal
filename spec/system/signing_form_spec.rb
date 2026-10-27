@@ -1253,9 +1253,19 @@ RSpec.describe 'Signing Form' do
     it 'completes the form after resending the one time code' do
       visit submit_form_path(slug: submitter.slug)
 
-      click_button 'Send verification code'
+      expect do
+        click_button 'Send verification code'
+      end.to change { ActionMailer::Base.deliveries.count }.by(1)
 
-      find('#resend_label').click
+      # `SubmitFormEmail2fasController#update` odmítne re-send dřív než 15 s po
+      # předchozím odeslání (`send_2fa_email` event). Bez posunu času záleželo
+      # na tom, jestli první request doběhl dřív než klik na re-send, a spec padal
+      # na `nil.body` (upstream flake, docs/21 § 5.4).
+      travel_to(Time.current + 20.seconds) do
+        expect do
+          find('#resend_label').click
+        end.to change { ActionMailer::Base.deliveries.count }.by(1)
+      end
 
       email = ActionMailer::Base.deliveries.last
       one_time_code = email.body.encoded[%r{<b>(\d{6})</b>}, 1]
