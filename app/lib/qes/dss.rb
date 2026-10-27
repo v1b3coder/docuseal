@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Qes
-  # DSS slovník (PAdES-LT/LTA, ETSI EN 319 142-1): revokační data (CRL) a certy
+  # DSS slovník (PAdES-LT, ETSI EN 319 142-1): revokační data (CRL) a certy
   # do slovníku `/DSS` dokumentu, aby je validátor našel i bez sítě. Přidává se
   # jako inkrementální revize po podpisu — podpis zůstává INTACT a pokrytí
   # celého souboru drží následující DocTS (§ 7.6).
