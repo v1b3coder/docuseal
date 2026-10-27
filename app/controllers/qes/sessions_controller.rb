@@ -111,6 +111,22 @@ module Qes
       render_qes_error_with(e.code, :unprocessable_content)
     end
 
+    # Dokončení submissionu vázané na session token (S1). Appka nesmí
+    # dokončovat cizí submitter plným API tokenem účtu.
+    def complete_submission
+      return render_qes_error_with(:used_token, :gone) if @session.terminal? && @session.state != 'completed'
+      return render_qes_error_with(:expired_token, :gone) if @session.expired?
+      return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'completed'
+
+      submitter = @session.submitter
+      Submitters::SubmitValues.call(submitter, ActionController::Parameters.new(completed: 'true'), request) unless submitter.completed_at?
+
+      render json: { state: @session.state, submitter_id: submitter.id,
+                     completed: submitter.completed_at.present? }
+    rescue Submitters::SubmitValues::ValidationError, Submitters::SubmitValues::RequiredFieldError => e
+      render_qes_error_with(:completion_failed, :unprocessable_content)
+    end
+
     def abort
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
       return render_qes_error_with(:expired_token, :gone) if @session.expired?
@@ -185,6 +201,7 @@ module Qes
         signer_name: @session.submitter.name,
         hash_algorithm: @session.hash_algorithm,
         level_required: @session.level_required,
+        submitter_id: @session.submitter_id,
         requires_certificate: @session.state.in?(%w[awaiting_app app_opened]),
         server_url: Qes::Config[:public_base_url].presence || Docuseal.default_url_options[:host],
         expires_at: @session.expires_at&.utc&.iso8601,
@@ -218,7 +235,8 @@ module Qes
         signing_time: @session.signing_time&.utc&.iso8601,
         validation: @session.validation_report,
         revocation: @session.validation_report&.[]('revocation'),
-        completed_at: @session.completed_at&.utc&.iso8601
+        completed_at: @session.completed_at&.utc&.iso8601,
+        submitter_id: @session.submitter_id
       }
     end
 

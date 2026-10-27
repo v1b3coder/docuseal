@@ -150,6 +150,7 @@ Rails.application.routes.draw do
         get :document
         post :certificate
         post :complete
+        post :complete_submission
         post :abort
       end
     end
