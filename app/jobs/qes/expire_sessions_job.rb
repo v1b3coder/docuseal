@@ -28,11 +28,10 @@ module Qes
       interval = Qes::Config[:expiry_job_interval].to_i
       return unless interval.positive?
 
-      last = LockEvent.where(key: LOCK_KEY).order(:id).last
+      # Atomický lock v cache: při souběžném startu dvou procesů naplánuje
+      # smyčku jen ten, kdo klíč vytvoří (Redis/MemoryStore unless_exist).
+      return unless Rails.cache.write(LOCK_KEY, true, unless_exist: true, expires_in: interval.seconds)
 
-      return if last && last.created_at > (interval / 2.0).seconds.ago
-
-      LockEvent.create!(key: LOCK_KEY, event_name: :retry)
       self.class.perform_in(interval.seconds)
     end
   end
