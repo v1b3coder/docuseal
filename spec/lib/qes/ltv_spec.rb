@@ -7,7 +7,7 @@ require 'rails_helper'
 RSpec.describe Qes::Ltv do
   before { QesHelpers.configure! }
 
-  def issue_certificate(name, issuer: nil, issuer_key: nil)
+  def issue_certificate(name, issuer: nil, issuer_key: nil, ca: false)
     key = OpenSSL::PKey::RSA.new(2048)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
@@ -17,6 +17,10 @@ RSpec.describe Qes::Ltv do
     cert.public_key = key.public_key
     cert.not_before = Time.current - 3600
     cert.not_after = Time.current + 3600
+    factory = OpenSSL::X509::ExtensionFactory.new
+    factory.subject_certificate = cert
+    factory.issuer_certificate = issuer || cert
+    cert.add_extension(factory.create_extension('basicConstraints', ca ? 'CA:TRUE' : 'CA:FALSE', true))
     cert.sign(issuer_key || key, OpenSSL::Digest.new('SHA256'))
 
     [key, cert]
@@ -42,10 +46,10 @@ RSpec.describe Qes::Ltv do
   end
 
   describe 'CRL freshness and chain scope' do
-    let(:root_pair) { issue_certificate('Root') }
+    let(:root_pair) { issue_certificate('Root', ca: true) }
     let(:root_key) { root_pair.first }
     let(:root) { root_pair.last }
-    let(:intermediate_pair) { issue_certificate('Intermediate', issuer: root, issuer_key: root_key) }
+    let(:intermediate_pair) { issue_certificate('Intermediate', issuer: root, issuer_key: root_key, ca: true) }
     let(:intermediate_key) { intermediate_pair.first }
     let(:intermediate) { intermediate_pair.last }
     let(:leaf_pair) { issue_certificate('Leaf', issuer: intermediate, issuer_key: intermediate_key) }
