@@ -57,7 +57,7 @@ module Qes
           session.submitter.save!
           session.tbs_document.attach(tbs_blob)
           session.update!(document_digest: Qes::TbsDocument.document_digest(tbs_pdf),
-                           failure_code: nil, failure_message: nil)
+                           signed_attrs_der: nil, failure_code: nil, failure_message: nil)
         end
 
         session.tbs_document
