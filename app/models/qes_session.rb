@@ -102,9 +102,10 @@ class QesSession < ApplicationRecord
 
   def expired?(at = Time.current)
     if state == 'completed'
-      return false if completed_at.blank?
+      completed = completed_at || updated_at
+      return false if completed.blank?
 
-      return completed_at + Qes::Config[:completed_session_ttl].to_i.seconds <= at
+      return completed + Qes::Config[:completed_session_ttl].to_i.seconds <= at
     end
 
     state == 'expired' || (expires_at.present? && expires_at <= at)
