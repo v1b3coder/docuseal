@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Qes
-  # Dokumentový timestamp (PAdES-LTA, ETSI EN 319 142-1): nová inkrementální
+  # Dokumentový timestamp (PAdES-LT + DocTS, ETSI EN 319 142-1): nová inkrementální
   # revize s podpisovým polem typu `DocTimeStamp` a RFC 3161 tokenem z TSA.
   # Kryje celý dokument včetně DSS a pečeti; řetězení DocTS je evidence record.
   module DocTimestamp

@@ -178,16 +178,17 @@ module Qes
 
         # Dlouhé síťové operace (CRL fetch, TSA, PDF) mimo `with_lock`; transakce
         # pak drží jen zápis stavu a dokumentů (M20).
+        Qes::CmsBuilder.verify_signature!(session.certificate, signature,
+                                          session.signed_attrs_der, session.hash_algorithm)
+
+        revocation_data = ltv_values
+
         stored_base = session.tbs_document&.blob&.metadata&.fetch('qes_base_digest', nil)
         current_base = Qes::TbsDocument.base_digest(session.submitter)
         if stored_base.present? && current_base != stored_base
           raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
         end
 
-        Qes::CmsBuilder.verify_signature!(session.certificate, signature,
-                                          session.signed_attrs_der, session.hash_algorithm)
-
-        revocation_data = ltv_values
         cms_der = build_cms(signature)
         signed_pdf = embed(cms_der)
         report = validate(signed_pdf)
@@ -201,7 +202,8 @@ module Qes
 
         # DSS (PAdES-LT) až po validaci — revokační data pro offline
         # validaci; podpis zůstává INTACT. VRI klíč je SHA-1 `/Contents`
-        # podpisu appky (SPEC § 7.4).
+        # podpisu appky (SPEC § 7.4). DSS kryje podepisujícího, ne TSA,
+        # pečeť ani DocTS; proto netvrdíme úplné PAdES-LTA (S6).
         signed_pdf = Qes::Dss.apply(
           signed_pdf,
           crls: revocation_data&.fetch(:crls, []),
@@ -213,8 +215,9 @@ module Qes
                                                  pkcs: seal_pkcs)
         raise ClientError.new(:seal_failed, 'Document seal failed; retry completion') if seal_state == 'failed'
 
-        # DocTS (PAdES-LTA) až po DSS a pečeti — kryje celý dokument
-        # včetně revokačních dat a pečeti; řetězení DocTS je evidence record.
+        # DocTS až po DSS a pečeti — kryje celý dokument včetně
+        # revokačních dat a pečeti; řetězení DocTS je evidence record.
+        # TSA revokace se neověřuje, takže jde o LT + DocTS, ne úplné LTA (S6).
         final_pdf, doc_timestamp_state = Qes::DocTimestamp.apply(final_pdf, tsa_url: Qes::Config[:tsa_url])
 
         if doc_timestamp_state != 'applied' && Qes::Config[:tsa_required]
