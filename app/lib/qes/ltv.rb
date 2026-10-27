@@ -137,7 +137,7 @@ module Qes
       end
 
       OpenSSL::X509::CRL.new(body)
-    rescue OpenSSL::X509::CRLError, URI::InvalidURIError, SocketError, Timeout::Error, SystemCallError, OpenSSL::SSL::SSLError => e
+    rescue OpenSSL::X509::CRLError, URI::InvalidURIError, Resolv::ResolvError, SocketError, Timeout::Error, SystemCallError, OpenSSL::SSL::SSLError => e
       raise FetchError, "CRL fetch failed: #{e.class}"
     end
 
@@ -166,6 +166,8 @@ module Qes
       end
 
       addresses.first
+    rescue Resolv::ResolvError, SocketError => e
+      raise FetchError, "CRL host #{uri.host.inspect} could not be resolved (#{e.class})"
     end
 
     def allowed_hosts
