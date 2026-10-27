@@ -135,7 +135,8 @@ RSpec.describe 'Qes sessions API', type: :request do
 
     post "/s/#{submitter.slug}/qes_sessions", params: { field_uuid: second_field['uuid'] }
 
-    expect(response).to have_http_status(:created)
+    expect(response).to have_http_status(:conflict)
+    expect(response.parsed_body['error']).to eq('signature_in_progress')
     expect(session.reload.state).to eq('awaiting_signature')
   end
 

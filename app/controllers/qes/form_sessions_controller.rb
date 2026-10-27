@@ -39,6 +39,17 @@ module Qes
                              completed: true, expires_at: completed.expires_at&.utc&.iso8601 }
       end
 
+      # Na jednu submission smí být připravená jen jedna podpisová revize;
+      # jinak by dvě pole téhož submittera vytvořila dvě větve PDF (S3).
+      in_progress = QesSession.active.where(submission_id: @submitter.submission_id,
+                                            state: 'awaiting_signature').first
+      if in_progress && (in_progress.submitter_id != @submitter.id || in_progress.field_uuid != field['uuid'])
+        return render json: { error: 'signature_in_progress', id: in_progress.id,
+                             session_id: in_progress.id, state: in_progress.state,
+                             expires_at: in_progress.expires_at&.utc&.iso8601,
+                             poll_interval_ms: 2000 }, status: :conflict
+      end
+
       session = nil
       token = nil
 

@@ -84,6 +84,20 @@ module Qes
     # Globální index první stránky přílohy v základu (SPEC § 4.6): podpis pokrývá
     # spojený dokument, ale `areas[].page` je per-příloha. Metadata
     # `pdf.number_of_pages` jsou bez stahování souborů.
+    # Digest finálního PDF předchozí revize; bereme přesné bajty, ne
+    # re-serializovaný HexaPDF dokument (ten může mít jiné /ID).
+    def chained_base_bytes(submitter)
+      session = chained_session(submitter)
+      return unless session&.final_document&.attached?
+
+      session.final_document.download
+    end
+
+    def base_digest(submitter)
+      bytes = chained_base_bytes(submitter)
+      bytes && Digest::SHA256.hexdigest(bytes)
+    end
+
     def document_manifest(submitter)
       submission = submitter.submission
       values = submission.submitters.reduce({}) { |acc, signer| acc.merge(signer.values) }

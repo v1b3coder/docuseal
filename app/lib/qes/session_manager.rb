@@ -34,9 +34,18 @@ module Qes
       attributes[:state] = to
       attributes[:"#{to}_at"] = at if session.class.column_names.include?("#{to}_at") && attributes[:"#{to}_at"].nil?
       attributes[:completed_at] = at if to == 'completed' && attributes[:completed_at].nil?
+      attributes[:updated_at] = at
 
-      session.assign_attributes(attributes)
-      session.save!
+      # Atomický přechod: stav v WHERE zabrání přepsání completed zastaralým
+      # objektem z jiného requestu (S3).
+      updated = session.class.where(id: session.id, state: from).update_all(attributes)
+
+      if updated.zero?
+        session.reload
+        raise InvalidTransition, "QesSession #{session.id}: #{from} -> #{to} is not allowed"
+      end
+
+      session.reload
       session
     end
 
