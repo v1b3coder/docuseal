@@ -78,6 +78,17 @@ RSpec.describe 'QES token document endpoint', type: :request do
     end
   end
 
+  it 'extends the review and signature TTLs' do
+    session.update!(expires_at: 1.minute.from_now)
+    get '/qes/sessions/document/document'
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.expires_at).to be > 5.minutes.from_now
+
+    post '/qes/sessions/document/certificate', params: certificate_params
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.expires_at).to be > 5.minutes.from_now
+  end
+
   it 'serves the unsigned TBS before the certificate and does not rebuild it on certificate' do
     session
     get '/qes/sessions/document/document'
