@@ -40,6 +40,7 @@ module Qes
         end
         values_snapshot = Qes::ValueValidator.non_qes_values(candidate.values, candidate)
         manifest = Qes::TbsDocument.document_manifest(candidate)
+        base_digest = Qes::TbsDocument.base_digest(candidate)
         tbs_pdf = Qes::TbsDocument.build(
           candidate, session.field,
           signature_size: tbs_signature_size(certificate, chain), manifest:
@@ -57,7 +58,8 @@ module Qes
 
         # Bajty musí být uložené před zveřejněním stavu awaiting_signature.
         tbs_blob = upload_document(tbs_pdf, 'qes-tbs',
-                                   metadata: { qes_values: values_snapshot, qes_document_manifest: manifest })
+                                   metadata: { qes_values: values_snapshot, qes_document_manifest: manifest,
+                                               qes_base_digest: base_digest })
 
         session.with_lock do
           unless session.state.in?(%w[awaiting_app app_opened])
@@ -176,6 +178,12 @@ module Qes
 
         # Dlouhé síťové operace (CRL fetch, TSA, PDF) mimo `with_lock`; transakce
         # pak drží jen zápis stavu a dokumentů (M20).
+        stored_base = session.tbs_document&.blob&.metadata&.fetch('qes_base_digest', nil)
+        current_base = Qes::TbsDocument.base_digest(session.submitter)
+        if stored_base.present? && current_base != stored_base
+          raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
+        end
+
         Qes::CmsBuilder.verify_signature!(session.certificate, signature,
                                           session.signed_attrs_der, session.hash_algorithm)
 
