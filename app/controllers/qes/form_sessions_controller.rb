@@ -167,6 +167,9 @@ module Qes
       {
         seal_state: session.seal_state,
         doc_timestamp_state: session.doc_timestamp_state,
+        # Prohlížeč potřebuje zmrazené hodnoty ostatních polí, aby po
+        # dokončení neposlal změněné {{name}}/datum/vzorce (N6).
+        values: Qes::ValueValidator.non_qes_values(session.submitter.values, session.submitter),
         # `renderer` má vždy HTML formát; `render_to_string` by v JSON
         # requestu hledal `icons/_circle_check.json` a spadl by na 500.
         summary_html: ApplicationController.renderer.render(partial: 'submissions/qes_summary',
