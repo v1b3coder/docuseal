@@ -73,8 +73,8 @@ class Submitter < ApplicationRecord
   # pro formulář, API i jakoukoli budoucí cestu (nález 3.1). Požadavek se
   # bere z šablony, ne z `submission.template_fields`, které může API přepsat
   # (nález 2.6).
-  before_validation :ensure_qes_completion, if: -> { completed_at_changed? && completed_at.present? }
-  before_validation :ensure_qes_values, if: :values_changed?
+  before_validation :ensure_qes_completion, if: -> { Qes.enabled? && completed_at_changed? && completed_at.present? }
+  before_validation :ensure_qes_values, if: -> { Qes.enabled? && values_changed? }
 
   after_destroy :anonymize_email_events, if: -> { Docuseal.multitenant? }
 

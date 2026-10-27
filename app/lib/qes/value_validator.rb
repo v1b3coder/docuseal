@@ -9,6 +9,8 @@ module Qes
     module_function
 
     def call(values, submitter)
+      return unless Qes.active_for?(submitter.submission)
+
       validate_signed_values!(submitter.values.merge(values.to_h), submitter)
 
       Array(values).each do |key, value|
