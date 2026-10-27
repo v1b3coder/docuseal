@@ -219,8 +219,10 @@ module Qes
     # Důvěryhodnost vůči trust rootům. Do store se musí přidat i intermediate
     # certifikáty z CMS — bez nich OpenSSL řetěz nepostaví a reálné kvalifikované
     # certifikáty (I.CA/PostSignum) by vycházely jako nedůvěryhodné.
-    def trusted_chain?(certificate, chain, trust_roots, at: Time.current)
-      return false if certificate.nil? || trust_roots.blank?
+    # Vrací i řetěz, který store skutečně postavil; revokace se pak kontroluje
+    # nad ním, ne jen nad certy od klienta (S2).
+    def verified_chain(certificate, chain, trust_roots, at: Time.current)
+      return [false, []] if certificate.nil? || trust_roots.blank?
 
       store = OpenSSL::X509::Store.new
       store.purpose = OpenSSL::X509::PURPOSE_ANY
@@ -229,9 +231,19 @@ module Qes
 
       # `chain` jsou untrusted intermediate certifikáty z CMS; do store se
       # nesmí přidat jako trusted, jinak by se root z CMS stal trust rootem.
-      store.verify(certificate, untrusted_chain(chain))
+      verified = nil
+      ok = store.verify(certificate, untrusted_chain(chain)) do |success, context|
+        verified = context.chain if success
+        success
+      end
+
+      [ok, verified || []]
     rescue OpenSSL::X509::StoreError, OpenSSL::X509::CertificateError
-      false
+      [false, []]
+    end
+
+    def trusted_chain?(certificate, chain, trust_roots, at: Time.current)
+      verified_chain(certificate, chain, trust_roots, at:).first
     end
 
     def untrusted_chain(chain)

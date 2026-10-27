@@ -122,9 +122,16 @@ module Qes
       # Revokační data pro DSS (jeden fetch); CMS LTV už nepoužíváme.
       def ltv_values
         certificates = session.certificate_chain.map { |der| OpenSSL::X509::Certificate.new(Base64.decode64(der)) }
-        crls = Qes::Ltv.fetch_crls(certificates.first, chain: certificates.drop(1))
+        ok, verified = Qes::Validator.verified_chain(certificates.first, certificates.drop(1), trust_roots)
+        unless ok
+          raise ClientError.new(:not_trusted, 'Certificate chain does not lead to a trusted root')
+        end
 
-        Qes::Ltv.check_revoked!(certificates.first, chain: certificates.drop(1), crls: crls || [])
+        verified = certificates if verified.blank?
+        chain = verified.drop(1)
+        crls = Qes::Ltv.fetch_crls(certificates.first, chain:)
+
+        Qes::Ltv.check_revoked!(certificates.first, chain:, crls: crls || [])
 
         crls && { crls: crls.map(&:to_der) }
       end
