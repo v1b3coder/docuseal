@@ -60,7 +60,7 @@ module Qes
       return 'invalid' if signatures.any? { |signature| !signature[:intact] } || modified
       return 'invalid' unless signatures.last[:coverage] == 'full' || coverage_valid
       return 'valid_untrusted' unless signatures.all? { |signature| Qes::Validator.accepted_signature?(signature) }
-      return 'valid_unqualified' if qes.empty?
+      return 'valid_unqualified' if qes.empty? || qes.any? { |signature| signature[:level] == 'none' }
 
       'valid'
     end
