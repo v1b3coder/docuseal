@@ -7,7 +7,7 @@ module Qes
   # (nález Major 1). Upstream primitivy se jen volají.
   module PdfiumTrust
     Result = Struct.new(:common_name, :signing_time, :type, :verified, :trusted,
-                        :tsa_trusted, :modified, :messages)
+                        :tsa_trusted, :modified, :messages, :reason)
 
     module_function
 
@@ -134,11 +134,13 @@ module Qes
       Result.new(VerifyPdfSignature.common_name(pkcs7),
                  VerifyPdfSignature.signing_time(pkcs7, signature),
                  signature.sub_filter, verified, trusted,
-                 tsa_trusted, modified, messages(pkcs7, verified:, trusted:, modified:))
+                 tsa_trusted, modified, messages(pkcs7, verified:, trusted:, modified:),
+                 signature.reason)
     rescue OpenSSL::PKCS7::PKCS7Error
       Result.new(nil, VerifyPdfSignature.parse_time(signature.time), signature.sub_filter,
                   false, false, false, false,
-                  [VerifyPdfSignature::MessageStruct.new(I18n.t('signature_verification_failed'), :error)])
+                  [VerifyPdfSignature::MessageStruct.new(I18n.t('signature_verification_failed'), :error)],
+                  signature.reason)
     end
 
     def messages(pkcs7, verified:, trusted:, modified:)
