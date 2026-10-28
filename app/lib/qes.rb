@@ -27,8 +27,14 @@ module Qes
     # QES_TSA_TRUST_ROOTS: comma-separated PEM file paths for trusted TSA roots.
     # Required whenever QES_TSA_URL is set, even with QES_TSA_REQUIRED=false.
     # Without TSA roots, timestamps provide no trusted historical validation time.
+    #
+    # Defaults are for the Czech deployment: PostSignum CRL hosts and roots,
+    # DigiCert TSA. ENV is an override; staging/test override trust roots,
+    # require_ltv, test CRL and the allowlist.
+    CONFIG_DIR = File.expand_path('../../config/qes', __dir__)
+
     DEFAULTS = {
-      enabled: false,
+      enabled: true,
       session_ttl: 600,
       review_ttl: 900,
       pdf_max_bytes: 25.megabytes,
@@ -39,12 +45,12 @@ module Qes
       seal_pkcs_password: nil,
       deep_link_base: 'dokulachtan://sign',
       public_base_url: nil,
-      trust_roots: nil,
-      tsa_url: nil,
-      tsa_trust_roots: nil,
+      trust_roots: File.join(CONFIG_DIR, 'postsignum.pem'),
+      tsa_url: 'http://timestamp.digicert.com',
+      tsa_trust_roots: File.join(CONFIG_DIR, 'digicert-tsa.pem'),
       tsa_required: true,
-      require_ltv: false,
-      ltv_allowed_hosts: nil,
+      require_ltv: true,
+      ltv_allowed_hosts: 'crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu',
       android_cert_sha256: nil,
       test_crl_path: nil,
       ios_team_id: nil,
