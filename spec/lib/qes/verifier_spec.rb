@@ -83,7 +83,7 @@ RSpec.describe Qes::Verifier do
   end
 
   it 'does not trust a root that is only in the PDF chain' do
-    Qes::Config[:trust_roots] = nil
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
 
     report = described_class.call(pdf, name: 'chain-only-root.pdf')
 

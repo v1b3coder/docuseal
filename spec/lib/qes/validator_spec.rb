@@ -99,7 +99,7 @@ RSpec.describe Qes::Validator do
       leaf.add_extension(OpenSSL::X509::Extension.new('1.3.6.1.5.5.7.1.3', QesHelpers.qc_statements_der.to_der))
       leaf.sign(root_key, OpenSSL::Digest.new('SHA256'))
       pkcs = OpenSSL::PKCS12.create('test', 'invalid-usage', key, leaf, [root])
-      allow(Qes).to receive(:trust_roots).and_return([root])
+      allow(Qes).to receive(:verification_trust_roots).and_return([root])
       pdf = QesHelpers.signed_pdf(pkcs:)
 
       expect(described_class.trusted_chain?(leaf, [], [root])).to be true
@@ -118,7 +118,7 @@ RSpec.describe Qes::Validator do
     root_key, root = make_ca('/CN=Commitment Root', nil, nil)
     key, leaf = make_leaf(root, root_key, usage: 'nonRepudiation')
     pkcs = OpenSSL::PKCS12.create('test', 'commitment', key, leaf, [root])
-    allow(Qes).to receive(:trust_roots).and_return([root])
+    allow(Qes).to receive(:verification_trust_roots).and_return([root])
     pdf = QesHelpers.signed_pdf(pkcs:)
 
     expect(described_class.call(pdf, trust_roots: [root])[:ok]).to be true
@@ -179,7 +179,7 @@ RSpec.describe Qes::Validator do
     let(:later) { leaf.not_after + 3600 }
 
     before do
-      allow(Qes).to receive(:trust_roots).and_return([root])
+      allow(Qes).to receive(:verification_trust_roots).and_return([root])
       allow(Qes).to receive(:tsa_trust_roots).and_return([QesHelpers.tsa_root_certificate])
     end
 

@@ -28,9 +28,15 @@ module Qes
     # Required whenever QES_TSA_URL is set, even with QES_TSA_REQUIRED=false.
     # Without TSA roots, timestamps provide no trusted historical validation time.
     #
-    # Defaults are for the Czech deployment: PostSignum CRL hosts and roots,
-    # DigiCert TSA. ENV is an override; staging/test override trust roots,
-    # require_ltv, test CRL and the allowlist.
+    # Defaults are for the Czech deployment: PostSignum CRL hosts and signing
+    # roots, Czech qualified CA roots for verification, DigiCert TSA. ENV is an
+    # override; staging/test override trust roots, require_ltv, test CRL and the
+    # allowlist.
+    #
+    # `trust_roots` is the signing trust store (which certificates may sign in
+    # this DocuSeal); `verification_trust_roots` is the broader verification
+    # trust store (which external PDFs we can verify). Keeping them separate stops
+    # DocuSeal from accepting every Czech QTSP certificate for signing.
     CONFIG_DIR = File.expand_path('../../config/qes', __dir__)
 
     DEFAULTS = {
@@ -46,6 +52,7 @@ module Qes
       deep_link_base: 'dokulachtan://sign',
       public_base_url: nil,
       trust_roots: File.join(CONFIG_DIR, 'postsignum.pem'),
+      verification_trust_roots: File.join(CONFIG_DIR, 'czech.pem'),
       tsa_url: 'http://timestamp.digicert.com',
       tsa_trust_roots: File.join(CONFIG_DIR, 'digicert-tsa.pem'),
       tsa_required: true,
@@ -94,8 +101,6 @@ module Qes
     end
   end
 
-  # Trust roots pro ověření QES/AdES (SPEC § 5.2 a § 7.5). Načítá se ze
-  # stejné konfigurace jako při podpisu, aby ověření a podpis měly jeden zdroj pravdy.
   def self.enabled?
     Config[:enabled]
   end
@@ -106,21 +111,24 @@ module Qes
     enabled? && template_fields(submission).any? { |field| field['type'] == 'qes' }
   end
 
+  # Trust roots pro přijetí certu při podpisu (SPEC § 5.2). Zůstává úzké:
+  # český deployment podepisuje PostSignum certy, ne všechny české QTSP.
   def self.trust_roots
-    paths = Config[:trust_roots]
-    paths = paths.split(',') if paths.is_a?(String)
+    load_roots(Config[:trust_roots])
+  end
 
-    Array(paths).flat_map do |path|
-      path = path.strip
-      next [] if path.blank? || !File.exist?(path)
-
-      OpenSSL::X509::Certificate.load_file(path)
-    end
+  # Trust roots pro ověření cizích PDF (SPEC § 7.5). Výchozí je český bundle
+  # kvalifikovaných CA; podpisový trust store zůstává oddělený.
+  def self.verification_trust_roots
+    load_roots(Config[:verification_trust_roots])
   end
 
   # Samostatné kořeny důvěry pro časová razítka.
   def self.tsa_trust_roots
-    paths = Config[:tsa_trust_roots]
+    load_roots(Config[:tsa_trust_roots])
+  end
+
+  def self.load_roots(paths)
     paths = paths.split(',') if paths.is_a?(String)
 
     Array(paths).flat_map do |path|
@@ -130,6 +138,7 @@ module Qes
       OpenSSL::X509::Certificate.load_file(path)
     end
   end
+  private_class_method :load_roots
 
   # Pole šablony submissionu. U submissions vytvořených z UI bývá `template_fields`
   # prázdné (plní se až při odeslání formuláře) — stejný fallback jako upstream

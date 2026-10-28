@@ -2,7 +2,7 @@
 
 module Qes
   # Ověření PDF pro appku (docs/16): vrací strukturovaný report nad
-  # `Qes::Validator` (QES trust roots) a `VerifyPdfSignature` (pečeť DocuSealu,
+  # `Qes::Validator` (verification trust roots) a `VerifyPdfSignature` (pečeť DocuSealu,
   # unsigned změny). PDF se nikam neukládá.
   module Verifier
     module_function
@@ -10,7 +10,7 @@ module Qes
     def call(pdf_bytes, name:, account: nil)
       report = Qes::Validator.call(
         pdf_bytes,
-        trust_roots: Qes.trust_roots,
+        trust_roots: Qes.verification_trust_roots,
         trusted_certs: trusted_certs_for(account)
       )
       pdfium = report[:pdfium]

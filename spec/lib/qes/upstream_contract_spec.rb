@@ -47,7 +47,7 @@ RSpec.describe 'Upstream contracts used by the QES fork' do
       expect(signature).to have_attributes(verified: true, trusted: true, modified: false)
       expect(signature.messages.map(&:text)).to include(I18n.t('signed_with_trusted_certificate'))
 
-      allow(Qes).to receive(:trust_roots).and_return([])
+      allow(Qes).to receive(:verification_trust_roots).and_return([])
       signature = Qes::PdfiumTrust.report(StringIO.new(pdf), []).first
 
       expect(signature.type).to eq('ETSI.CAdES.detached')

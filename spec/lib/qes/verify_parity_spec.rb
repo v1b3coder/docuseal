@@ -13,7 +13,7 @@ RSpec.describe 'PDF verification parity' do
   end
 
   it 'reports unsigned changes after an untrusted signature' do
-    allow(Qes).to receive(:trust_roots).and_return([])
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
     pdf = "#{cades_pdf}\n% injected\n"
 
     signature = Qes::PdfiumTrust.report(StringIO.new(pdf), []).first
@@ -32,7 +32,7 @@ RSpec.describe 'PDF verification parity' do
   end
 
   it 'does not report changes for an intact untrusted signature' do
-    allow(Qes).to receive(:trust_roots).and_return([])
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
     signature = Qes::PdfiumTrust.report(StringIO.new(cades_pdf), []).first
 
     expect(signature).to have_attributes(verified: true, trusted: false, modified: false)
@@ -40,7 +40,7 @@ RSpec.describe 'PDF verification parity' do
 
   it 'trusts a CAdES signature via account trusted certificates' do
     pkcs = QesHelpers.pkcs12
-    allow(Qes).to receive(:trust_roots).and_return([])
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
 
     signature = Qes::PdfiumTrust.report(StringIO.new(cades_pdf(pkcs:)), [pkcs.certificate]).first
 
@@ -50,7 +50,7 @@ RSpec.describe 'PDF verification parity' do
 
   it 'does not trust a CAdES signature made by a CA certificate' do
     pkcs = QesHelpers.self_signed_ca_pkcs12
-    allow(Qes).to receive(:trust_roots).and_return([])
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
 
     signature = Qes::PdfiumTrust.report(StringIO.new(cades_pdf(pkcs:)), [pkcs.certificate]).first
 

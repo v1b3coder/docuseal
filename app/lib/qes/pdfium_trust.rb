@@ -13,7 +13,8 @@ module Qes
 
     # Vrací jeden `Result` na signaturu, stejně jako `VerifyPdfSignature.call`.
     # `trusted_ranges` omezí přijaté podpisy na konkrétní revizi (QES validace).
-    def report(io, trusted_certs, trusted_ranges: nil, allow_dss_changes: true)
+    def report(io, trusted_certs, trusted_ranges: nil, allow_dss_changes: true,
+               trust_roots: Qes.verification_trust_roots)
       Pdfium.with_instance do
         Pdfium::Document.open_io(io) do |document|
           signatures = document.signatures.select do |e|
@@ -25,7 +26,9 @@ module Qes
           verified = signatures.select { |signature| verified?(signature, io, trusted_certs) }
           trusted_timestamps = verified.select { |signature| trusted_timestamp?(signature, io) }
           timestamps = timestamps(io)
-          trusted_qes = verified.select { |signature| trusted_qes_signature?(signature, timestamps:) }
+          trusted_qes = verified.select do |signature|
+            trusted_qes_signature?(signature, timestamps:, trust_roots:)
+          end
           accepted = verified.select do |signature|
             accepted?(signature, trusted_certs, trusted_ranges:, trusted_timestamps:, trusted_qes:)
           end
@@ -124,7 +127,7 @@ module Qes
       )
     end
 
-    def trusted_qes_signature?(signature, timestamps: [], at: Time.current)
+    def trusted_qes_signature?(signature, timestamps: [], at: Time.current, trust_roots:)
       return false unless signature.sub_filter == 'ETSI.CAdES.detached'
 
       pkcs7 = OpenSSL::PKCS7.new(signature.contents)
@@ -137,7 +140,7 @@ module Qes
       timestamp_time = timestamps.filter_map { |range, time| time if range[1] >= signature.signed_end }.min
       evidence_time = [timestamp_time, Qes::TimestampToken.signature_time(pkcs7, at:)].compact.min
 
-      Qes::Validator.trusted_chain?(signer, chain, Qes.trust_roots, at: evidence_time || at)
+      Qes::Validator.trusted_chain?(signer, chain, trust_roots, at: evidence_time || at)
     end
 
     def trusted_timestamp?(signature, io)
