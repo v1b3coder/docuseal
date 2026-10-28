@@ -167,7 +167,7 @@ export default {
     IconChevronRight,
     IconBracketsContain
   },
-  inject: ['withPhone', 'withPayment', 'withVerification', 'withKba', 't', 'fieldTypes', 'isMobile'],
+  inject: ['withPhone', 'withPayment', 'withVerification', 'withKba', 'withQes', 't', 'fieldTypes', 'isMobile'],
   emits: ['insert-field', 'insert-table', 'insert-variable', 'insert-image', 'close'],
   data () {
     return {
@@ -182,7 +182,7 @@ export default {
     fieldIconsSorted: FieldType.computed.fieldIconsSorted,
     fieldTypesList () {
       return Object.fromEntries(Object.entries(this.fieldIconsSorted).filter(([type]) => {
-        return this.fieldTypes.includes(type) || ((this.withPhone || type !== 'phone') && (this.withPayment || type !== 'payment') && (this.withVerification || type !== 'verification') && (this.withKba || type !== 'kba'))
+        return this.fieldTypes.includes(type) || ((this.withPhone || type !== 'phone') && (this.withPayment || type !== 'payment') && (this.withVerification || type !== 'verification') && (this.withKba || type !== 'kba') && (this.withQes || type !== 'qes'))
       }))
     }
   },

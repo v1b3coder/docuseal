@@ -25,6 +25,7 @@ export const ERROR_KEYS = {
   certificate_expired: 'qes_error_certificate_expired',
   unsupported_key: 'qes_error_unsupported_key',
   rate_limited: 'qes_error_network',
+  disabled: 'qes_error_disabled',
   server_error: 'qes_error_network',
   network: 'qes_error_network'
 }

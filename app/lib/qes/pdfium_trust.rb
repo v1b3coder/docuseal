@@ -29,7 +29,11 @@ module Qes
           accepted = verified.select do |signature|
             accepted?(signature, trusted_certs, trusted_ranges:, trusted_timestamps:, trusted_qes:)
           end
-          last_signature = accepted.reject { |signature| signature.sub_filter == 'ETSI.RFC3161' }
+          # Když není žádný důvěryhodný podpis, bereme ověřené (stejně jako
+          # upstream): jinak by se přidaná data za nedůvěryhodným podpisem
+          # nehlásila jako neoprávněná změna (R1).
+          boundary = accepted.presence || (trusted_ranges.blank? ? verified : [])
+          last_signature = boundary.reject { |signature| signature.sub_filter == 'ETSI.RFC3161' }
                                      .max_by(&:signed_end)
           timestamp_ranges = (accepted & trusted_timestamps).map(&:byte_range)
           modified = last_signature && unsigned_changes?(io, last_signature.signed_end,
@@ -81,9 +85,25 @@ module Qes
     # zapsat i cert s `keyEncipherment` nebo CA cert (nález K1).
     def trusted?(signature, trusted_certs, trusted_qes)
       return true if trusted_qes.include?(signature)
-      return false unless signature.sub_filter == 'adbe.pkcs7.detached'
 
-      VerifyPdfSignature.trusted_signature?(signature, trusted_certs)
+      case signature.sub_filter
+      when 'adbe.pkcs7.detached'
+        VerifyPdfSignature.trusted_signature?(signature, trusted_certs)
+      when 'ETSI.CAdES.detached'
+        # CAdES přes certy účtu (R2), ale jen podpisový list — CA cert ani
+        # cert s keyEncipherment nesmí být trusted (K1).
+        signing_leaf?(signature) && VerifyPdfSignature.trusted_signature?(signature, trusted_certs)
+      else
+        false
+      end
+    end
+
+    def signing_leaf?(signature)
+      signer = VerifyPdfSignature.signer_certificate(OpenSSL::PKCS7.new(signature.contents))
+
+      signer.present? && Qes::CertificateInfo.new(signer).signing_leaf?
+    rescue OpenSSL::PKCS7::PKCS7Error
+      false
     end
 
     # Stejná pravidla jako upstream `unsigned_changes?`, ale s QES hranicí:

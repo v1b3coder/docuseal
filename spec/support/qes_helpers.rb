@@ -138,6 +138,27 @@ module QesHelpers
     OpenSSL::PKCS12.create('test', 'test', key, certificate)
   end
 
+  # CA cert (basicConstraints CA:TRUE) pro negativní test trustu (R2/K1).
+  def self_signed_ca_pkcs12
+    key = OpenSSL::PKey::RSA.new(2048)
+    certificate = OpenSSL::X509::Certificate.new
+    certificate.version = 2
+    certificate.serial = OpenSSL::BN.rand(64)
+    certificate.subject = OpenSSL::X509::Name.parse('/CN=Audit CA')
+    certificate.issuer = certificate.subject
+    certificate.public_key = key.public_key
+    certificate.not_before = Time.current - 60
+    certificate.not_after = Time.current + 1.day
+    factory = OpenSSL::X509::ExtensionFactory.new
+    factory.subject_certificate = certificate
+    factory.issuer_certificate = certificate
+    certificate.add_extension(factory.create_extension('basicConstraints', 'CA:TRUE', true))
+    certificate.add_extension(factory.create_extension('keyUsage', 'keyCertSign,cRLSign', true))
+    certificate.sign(key, OpenSSL::Digest.new('SHA256'))
+
+    OpenSSL::PKCS12.create('test', 'ca', key, certificate)
+  end
+
   # Raw `/Contents` posledního podpisu (pro VRI klíč v DSS).
   def signature_contents(pdf_bytes)
     HexaPDF::Document.new(io: StringIO.new(pdf_bytes)).signatures.to_a.last[:Contents].to_s

@@ -11,6 +11,8 @@
 <% with_timestamp_seconds = configs.find { |e| e.key == AccountConfig::WITH_TIMESTAMP_SECONDS_KEY }&.value == true %>
 <% with_signature_id_reason = configs.find { |e| e.key == AccountConfig::WITH_SIGNATURE_ID_REASON_KEY }&.value != false %>
 <% with_signature_id_completed_at = configs.find { |e| e.key == AccountConfig::WITH_SIGNATURE_ID_COMPLETED_AT_KEY }&.value == true %>
+<%# Jeden dotaz na celou submission místo dotazu na každého submittera (R5). %>
+<% qes_sessions_by_submitter = Qes.enabled? ? QesSession.completed.where(submission_id: @submission.id).order(:id).to_a.group_by(&:submitter_id) : {} %>
 <main style="max-width: 1600px" class="mx-auto pl-4">
   <% unless native_tab == 'recipients' %>
     <div class="flex justify-between items-center pr-4 sticky top-0 md:relative z-10 bg-base-100 <%= 'py-1.5' unless turbo_native_app? %>">
@@ -289,7 +291,7 @@
                   <% end %>
                 </span>
               </div>
-              <% qes_session = submitter&.qes_sessions&.completed&.order(:id)&.last %>
+              <% qes_session = submitter && qes_sessions_by_submitter[submitter.id]&.last %>
               <% if qes_session %>
                 <div class="flex items-center space-x-1 mt-1 text-sm">
                   <%= svg_icon(qes_session.validation_report&.dig('intact') ? 'circle_check' : 'x_circle',

@@ -1210,6 +1210,9 @@ en: &en
       already_signed: PDF files that are already signed are not supported.
       file_too_large: The PDF file is too large.
       invalid_level: Unsupported signature level.
+      qes_all_signers_required: Every signer must have a QES field.
+      qes_parallel_signers_not_allowed: Signers cannot share the same signing order.
+      qes_signing_order_required: Set a signing order or enable preserve order for QES templates.
     app:
       confirm_title: Confirm signature
       confirm_signer: 'Signer: %{name}'
@@ -7521,6 +7524,9 @@ cs:
       already_signed: Už podepsaná PDF nejsou podporovaná.
       file_too_large: PDF soubor je příliš velký.
       invalid_level: Nepodporovaná úroveň podpisu.
+      qes_all_signers_required: Každý podepisující musí mít pole QES.
+      qes_parallel_signers_not_allowed: Podepisující nemohou mít stejné pořadí podpisu.
+      qes_signing_order_required: Nastavte pořadí podpisu nebo zapněte zachování pořadí pro QES šablony.
     app:
     audit:
       title: Kvalifikovaný elektronický podpis (QES/AdES)

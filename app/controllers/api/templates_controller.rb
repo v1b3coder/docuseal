@@ -65,6 +65,8 @@ module Api
       end
 
       render json: @template.as_json(only: %i[id updated_at])
+    rescue ActiveRecord::RecordInvalid
+      render json: { error: template_errors_message }, status: :unprocessable_content
     end
 
     def destroy
@@ -80,6 +82,11 @@ module Api
     end
 
     private
+
+    def template_errors_message
+      @template.errors.map { |error| I18n.t("qes.error.#{error.message}", default: error.full_message) }
+                       .to_sentence
+    end
 
     def preload_relations(templates)
       schema_documents =

@@ -235,6 +235,7 @@ safeRegisterElement('template-builder', class extends HTMLElement {
       withPrefillable: template.fields?.some((f) => f.prefillable),
       withVerification: ['true', 'false'].includes(this.dataset.withVerification) ? this.dataset.withVerification === 'true' : null,
       withKba: ['true', 'false'].includes(this.dataset.withKba) ? this.dataset.withKba === 'true' : null,
+      withQes: this.dataset.withQes === 'true',
       withLogo: this.dataset.withLogo !== 'false',
       withFieldsDetection: this.dataset.withFieldsDetection === 'true',
       withDetectExistingFields: this.dataset.withDetectExistingFields === 'true',

@@ -67,6 +67,10 @@ class TemplatesController < ApplicationController
     WebhookUrls.enqueue_events(@template, 'template.updated')
 
     head :ok
+  rescue ActiveRecord::RecordInvalid
+    # QES pravidla (pořadí, qes pole u všech signerů) vrací 422 s textem,
+    # ne 500; builder jinak uložení tiše zahodí (R4).
+    render json: { error: template_errors_message }, status: :unprocessable_content
   end
 
   def destroy
@@ -98,6 +102,11 @@ class TemplatesController < ApplicationController
                                              locals: { template:, archived: template.archived_at? }),
       turbo_stream.replace('infinite_scroll', partial: 'shared/infinite_scroll', locals: { pagy: })
     ]
+  end
+
+  def template_errors_message
+    @template.errors.map { |error| I18n.t("qes.error.#{error.message}", default: error.full_message) }
+                     .to_sentence
   end
 
   def template_params

@@ -120,6 +120,15 @@
         :model-value="currentVerificationMethod"
         @select="handleSelectVerificationMethod"
       />
+      <ContextSubmenu
+        v-if="showQesLevel"
+        class="field-settings-qes-level"
+        :icon="IconWritingSign"
+        :label="t('qes_level')"
+        :options="qesLevelOptions"
+        :model-value="currentQesLevel"
+        @select="handleSelectQesLevel"
+      />
       <hr
         v-if="showRequired || showReadOnly || showPrefillable || showSetSigningDate || showWithLogo || showSignatureId"
         class="my-1 border-neutral-200"
@@ -484,7 +493,7 @@
 </template>
 
 <script>
-import { IconCopy, IconTrashX, IconTypography, IconInfoCircle, IconRouteAltLeft, IconMathFunction, IconAdjustmentsHorizontal, IconInputCheck, IconDots, IconNewSection, IconForms, IconId, IconCash, IconCoins } from '@tabler/icons-vue'
+import { IconCopy, IconTrashX, IconTypography, IconInfoCircle, IconRouteAltLeft, IconMathFunction, IconAdjustmentsHorizontal, IconInputCheck, IconDots, IconNewSection, IconForms, IconId, IconCash, IconCoins, IconWritingSign } from '@tabler/icons-vue'
 import FormulaModal from './formula_modal'
 import FontModal from './font_modal'
 import ConditionsModal from './conditions_modal'
@@ -515,7 +524,7 @@ export default {
     ContextSubmenu,
     ContextModal
   },
-  inject: ['t', 'getFieldTypeIndex', 'template', 'withCustomFields', 'currencies', 'dateFormats', 'locale', 'withFormula', 'withConditions', 'nativePlatform'],
+  inject: ['t', 'getFieldTypeIndex', 'template', 'withCustomFields', 'currencies', 'dateFormats', 'locale', 'withFormula', 'withConditions', 'withQes', 'nativePlatform'],
   props: {
     contextMenu: {
       type: Object,
@@ -649,6 +658,18 @@ export default {
     showVerificationMethod () {
       return this.field.type === 'verification'
     },
+    showQesLevel () {
+      return this.withQes && this.field.type === 'qes'
+    },
+    currentQesLevel () {
+      return this.field.preferences?.level || 'ades'
+    },
+    qesLevelOptions () {
+      return [
+        { value: 'ades', label: this.t('qes_level_ades') },
+        { value: 'qes', label: this.t('qes_level_qes') }
+      ]
+    },
     lengthValidation () {
       return this.parseLengthPattern(this.field.validation?.pattern)
     },
@@ -777,6 +798,7 @@ export default {
     IconId,
     IconCash,
     IconCoins,
+    IconWritingSign,
     buildDefaultName: Field.methods.buildDefaultName,
     formatNumber: FieldSettings.methods.formatNumber,
     formatDate: FieldSettings.methods.formatDate,
@@ -897,6 +919,13 @@ export default {
     handleSelectVerificationMethod (method) {
       this.field.preferences ||= {}
       this.field.preferences.method = method
+
+      this.$emit('save')
+      this.$emit('close')
+    },
+    handleSelectQesLevel (level) {
+      this.field.preferences ||= {}
+      this.field.preferences.level = level
 
       this.$emit('save')
       this.$emit('close')
