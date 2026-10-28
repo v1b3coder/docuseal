@@ -120,14 +120,11 @@
         :model-value="currentVerificationMethod"
         @select="handleSelectVerificationMethod"
       />
-      <ContextSubmenu
-        v-if="showQesLevel"
-        class="field-settings-qes-level"
-        :icon="IconWritingSign"
-        :label="t('qes_level')"
-        :options="qesLevelOptions"
-        :model-value="currentQesLevel"
-        @select="handleSelectQesLevel"
+      <QesLevelSubmenu
+        v-if="withQes && field.type === 'qes'"
+        :field="field"
+        @save="$emit('save')"
+        @close="$emit('close')"
       />
       <hr
         v-if="showRequired || showReadOnly || showPrefillable || showSetSigningDate || showWithLogo || showSignatureId"
@@ -493,7 +490,7 @@
 </template>
 
 <script>
-import { IconCopy, IconTrashX, IconTypography, IconInfoCircle, IconRouteAltLeft, IconMathFunction, IconAdjustmentsHorizontal, IconInputCheck, IconDots, IconNewSection, IconForms, IconId, IconCash, IconCoins, IconWritingSign } from '@tabler/icons-vue'
+import { IconCopy, IconTrashX, IconTypography, IconInfoCircle, IconRouteAltLeft, IconMathFunction, IconAdjustmentsHorizontal, IconInputCheck, IconDots, IconNewSection, IconForms, IconId, IconCash, IconCoins } from '@tabler/icons-vue'
 import FormulaModal from './formula_modal'
 import FontModal from './font_modal'
 import ConditionsModal from './conditions_modal'
@@ -502,6 +499,7 @@ import Field from './field'
 import FieldType from './field_type.vue'
 import FieldSettings from './field_settings.vue'
 import ContextSubmenu from './field_context_submenu.vue'
+import QesLevelSubmenu from './qes_level_submenu'
 import ContextModal from './field_context_modal.vue'
 import { stripeConnectedRef } from './payment_settings'
 
@@ -522,6 +520,7 @@ export default {
     ConditionsModal,
     DescriptionModal,
     ContextSubmenu,
+    QesLevelSubmenu,
     ContextModal
   },
   inject: ['t', 'getFieldTypeIndex', 'template', 'withCustomFields', 'currencies', 'dateFormats', 'locale', 'withFormula', 'withConditions', 'withQes', 'nativePlatform'],
@@ -658,18 +657,6 @@ export default {
     showVerificationMethod () {
       return this.field.type === 'verification'
     },
-    showQesLevel () {
-      return this.withQes && this.field.type === 'qes'
-    },
-    currentQesLevel () {
-      return this.field.preferences?.level || 'ades'
-    },
-    qesLevelOptions () {
-      return [
-        { value: 'ades', label: this.t('qes_level_ades') },
-        { value: 'qes', label: this.t('qes_level_qes') }
-      ]
-    },
     lengthValidation () {
       return this.parseLengthPattern(this.field.validation?.pattern)
     },
@@ -798,7 +785,6 @@ export default {
     IconId,
     IconCash,
     IconCoins,
-    IconWritingSign,
     buildDefaultName: Field.methods.buildDefaultName,
     formatNumber: FieldSettings.methods.formatNumber,
     formatDate: FieldSettings.methods.formatDate,
@@ -919,13 +905,6 @@ export default {
     handleSelectVerificationMethod (method) {
       this.field.preferences ||= {}
       this.field.preferences.method = method
-
-      this.$emit('save')
-      this.$emit('close')
-    },
-    handleSelectQesLevel (level) {
-      this.field.preferences ||= {}
-      this.field.preferences.level = level
 
       this.$emit('save')
       this.$emit('close')

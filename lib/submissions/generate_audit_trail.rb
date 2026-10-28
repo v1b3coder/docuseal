@@ -538,7 +538,7 @@ module Submissions
 
       composer.table(events_data, cell_style: { padding: [0, 0, 12, 0], border: { width: 0 } }) if events_data.present?
 
-      Qes::AuditPage.append(composer, submission) if QesSession.completed.where(submission_id: submission.id).exists?
+      Qes::Hooks.audit_page(composer, submission)
 
       composer.document
     end

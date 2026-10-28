@@ -30,7 +30,7 @@
         v-for="(icon, type) in fieldIconsSorted"
         :key="type"
       >
-        <li v-if="fieldTypes.includes(type) || ((withPhone || type != 'phone') && (withPayment || type != 'payment') && (withVerification || type != 'verification') && (withKba || type != 'kba') && (withQes || type != 'qes'))">
+        <li v-if="fieldTypes.includes(type) || ((withPhone || type != 'phone') && (withPayment || type != 'payment') && (withVerification || type != 'verification') && (withKba || type != 'kba'))">
           <a
             href="#"
             class="text-sm py-1 px-2"
@@ -51,6 +51,7 @@
 </template>
 
 <script>
+import { qesFieldIcons, qesFieldLabels, qesFieldNames } from './qes_field_type'
 import { IconTextSize, IconWritingSign, IconCalendarEvent, IconPhoto, IconCheckbox, IconPaperclip, IconSelect, IconCircleDot, IconChecks, IconColumns3, IconPhoneCheck, IconLetterCaseUpper, IconCreditCard, IconRubberStamp, IconSquareNumber1, IconHeading, IconId, IconCalendarCheck, IconStrikethrough, IconUserScan } from '@tabler/icons-vue'
 
 export default {
@@ -116,7 +117,7 @@ export default {
         phone: this.t('phone'),
         verification: this.t('verify_id'),
         kba: this.t('kba'),
-        qes: this.t('qes')
+        ...qesFieldNames
       }
     },
     fieldLabels () {
@@ -138,7 +139,7 @@ export default {
         phone: this.t('phone_field'),
         verification: this.t('verify_id'),
         kba: this.t('kba'),
-        qes: this.t('qes')
+        ...qesFieldLabels
       }
     },
     fieldIcons () {
@@ -163,7 +164,7 @@ export default {
         phone: IconPhoneCheck,
         verification: IconId,
         kba: IconUserScan,
-        qes: IconWritingSign
+        ...(this.withQes ? qesFieldIcons : {})
       }
     },
     skipTypes () {

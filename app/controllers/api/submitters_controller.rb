@@ -157,12 +157,25 @@ module Api
     end
 
     def maybe_assign_completed_attributes(submitter, attrs)
-      completed = ActiveModel::Type::Boolean.new.cast(attrs[:completed])
+      attrs = attrs.merge(completed: ActiveModel::Type::Boolean.new.cast(attrs[:completed]))
 
-      submitter.completed_at = completed ? Time.current : submitter.completed_at
-      # Stejná příprava hodnot jako formulář; bez ní API ztratí defaulty,
-      # vzorce, razítko i datum (nález 1).
-      Qes::SigningValues.finalize!(submitter) if completed
+      submitter.completed_at = attrs[:completed] ? Time.current : submitter.completed_at
+
+      return Qes::Hooks.finalize_values(submitter) if attrs[:completed] && Qes.active_for?(submitter.submission)
+
+      if attrs[:completed]
+        submitter.values = Submitters::SubmitValues.merge_default_values(submitter)
+        submitter.values = Submitters::SubmitValues.maybe_remove_condition_values(submitter)
+
+        formula_values = Submitters::SubmitValues.build_formula_values(submitter)
+
+        if formula_values.present?
+          submitter.values = submitter.values.merge(formula_values)
+          submitter.values = Submitters::SubmitValues.maybe_remove_condition_values(submitter)
+        end
+
+        submitter.values = Submitters::SubmitValues.replace_current_date_placeholders(submitter)
+      end
 
       submitter
     end

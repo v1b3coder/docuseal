@@ -1,7 +1,4 @@
 <%= render 'shared/turbo_modal_large', title: t('preferences') do %>
-  <% if @error.present? %>
-    <div class="mx-5 mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><%= @error %></div>
-  <% end %>
   <% show_api = Docuseal.multitenant? || current_account.testing? || !current_account.linked_account_account %>
   <% show_recipients = @template.submitters.to_a.length > 1 %>
   <% options = [[t('general'), 'general']] %>

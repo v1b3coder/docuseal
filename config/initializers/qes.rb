@@ -11,3 +11,8 @@ Rails.application.config.after_initialize do
 rescue StandardError => e
   Rails.logger.warn("[qes] could not schedule expire job: #{e.class}")
 end
+
+# Rozšíření upstream tříd (validace, callbacky, hooky) bez zásahu do jejich souborů.
+Rails.application.config.to_prepare do
+  Qes::Extensions.install!
+end

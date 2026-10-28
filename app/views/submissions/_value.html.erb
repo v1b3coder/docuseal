@@ -1,8 +1,5 @@
-<%# QES pole nemá textovou hodnotu — místo `qes:<id>` se zobrazí přehled podpisu.
-    Holý `return` by zahodil už vykreslený partial, proto `return output_buffer`. %>
-<% if field['type'] == 'qes' %>
-  <% qes_session = QesSession.completed_for(submitter, field['uuid']) %>
-  <%= render 'submissions/qes_summary', session: qes_session, compact: true if qes_session %>
+<% if (qes_value = qes_field_value(field, submitter, local_assigns)).present? %>
+  <%= qes_value %>
   <% return output_buffer %>
 <% end %>
 <% align = field.dig('preferences', 'align') %>

@@ -5,8 +5,6 @@ module Submissions
     module_function
 
     def call(submitter, with_audit: true)
-      return Qes::ResultAttachments.combined_document(submitter, with_audit:) if submitter.qes_sessions.completed.exists?
-
       pdf = build_combined_pdf(submitter, with_audit:)
 
       submission = submitter.submission
@@ -37,9 +35,12 @@ module Submissions
         pdf.write(io, incremental: true, validate: true)
       end
 
-      Qes::ResultAttachments.attach_pdf(
-        submission, io.tap(&:rewind).string,
-        name: with_audit ? 'combined_document' : 'merged_document'
+      ActiveStorage::Attachment.create!(
+        blob: ActiveStorage::Blob.create_and_upload!(
+          io: io.tap(&:rewind), filename: "#{submission.name || submission.template&.name}.pdf".tr('/', '-')
+        ),
+        name: with_audit ? 'combined_document' : 'merged_document',
+        record: submission
       )
     end
 
@@ -70,8 +71,6 @@ module Submissions
 
       result = HexaPDF::Document.new
 
-      # `template_schema` je nil u submissionu vytvořeného přes API (doplní se
-      # až otevřením formuláře); stejný fallback jako `Qes.template_schema`.
       schema = submitter.submission.template_schema.presence || submitter.submission.template&.schema || []
 
       schema.each do |item|

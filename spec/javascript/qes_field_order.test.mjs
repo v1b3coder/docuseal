@@ -44,7 +44,7 @@ test('form applies QES ordering after page sorting and before grouping steps', (
 })
 
 test('maps missing fields to an error translated in English and Czech', () => {
-  const translations = readFileSync(new URL('../../app/javascript/submission_form/i18n.js', import.meta.url), 'utf8')
+  const translations = readFileSync(new URL('../../app/javascript/submission_form/qes_i18n.js', import.meta.url), 'utf8')
 
   assert.equal(errorKey('fields_incomplete'), 'qes_error_fields_incomplete')
   assert.match(translations, /qes_error_fields_incomplete: 'Fill in all required fields/)

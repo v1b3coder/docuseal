@@ -29,9 +29,7 @@ module Submitters
         WebhookUrls.enqueue_events(submitter, 'form.started')
       end
 
-      submitter.with_lock do
-        update_submitter!(submitter, params, request, validate_required:)
-      end
+      update_submitter!(submitter, params, request, validate_required:)
 
       submitter.submission.save!
 
@@ -76,8 +74,22 @@ module Submitters
       submitter.ua = request.user_agent
       submitter.timezone = request.params[:timezone]
 
+      return Qes::Hooks.finalize_values(submitter, required_field_uuids_acc: Set.new) if Qes.active_for?(submitter.submission)
+
+      submitter.values = merge_default_values(submitter)
+
       required_field_uuids_acc = Set.new
-      Qes::SigningValues.finalize!(submitter, required_field_uuids_acc:)
+
+      submitter.values = maybe_remove_condition_values(submitter, required_field_uuids_acc:)
+
+      formula_values = build_formula_values(submitter)
+
+      if formula_values.present?
+        submitter.values = submitter.values.merge(formula_values)
+        submitter.values = maybe_remove_condition_values(submitter, required_field_uuids_acc:)
+      end
+
+      submitter.values = replace_current_date_placeholders(submitter)
 
       required_field_uuids_acc.each do |uuid|
         next if submitter.values[uuid].present?
@@ -149,8 +161,6 @@ module Submitters
     end
 
     def validate_values!(values, submitter, params, request)
-      Qes::ValueValidator.call(values, submitter)
-
       values.each do |key, value|
         field = submitter.submission.template_fields.find { |e| e['uuid'] == key }
 

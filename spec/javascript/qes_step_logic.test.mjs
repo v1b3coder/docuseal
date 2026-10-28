@@ -100,8 +100,10 @@ function deferred () {
 async function componentInstance (props = {}) {
   const source = readFileSync(new URL('../../app/javascript/submission_form/qes_step.vue', import.meta.url), 'utf8')
   const logicUrl = new URL('../../app/javascript/submission_form/qes_step_logic.mjs', import.meta.url).href
+  const i18nUrl = new URL('../../app/javascript/submission_form/qes_i18n.js', import.meta.url).href
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace("'./qes_step_logic.mjs'", JSON.stringify(logicUrl))
+    .replace("'./qes_i18n'", JSON.stringify(i18nUrl))
   const component = (await import(`data:text/javascript,${encodeURIComponent(script)}`)).default
   const emissions = []
   const timers = []
@@ -256,10 +258,10 @@ test('resumes polling an in-progress signature returned by create without a toke
 
 test('shows the in-progress explanation and restart action in Czech and English', () => {
   const vue = readFileSync(new URL('../../app/javascript/submission_form/qes_step.vue', import.meta.url), 'utf8')
-  const translations = readFileSync(new URL('../../app/javascript/submission_form/i18n.js', import.meta.url), 'utf8')
+  const translations = readFileSync(new URL('../../app/javascript/submission_form/qes_i18n.js', import.meta.url), 'utf8')
   assert.match(vue, /session.error === 'signature_in_progress' \? 'qes_step_in_progress'/)
   assert.match(vue, /@click="restartSession"/)
-  assert.match(vue, /t\('qes_step_cancel_restart'\)/)
+  assert.match(vue, /qesT\('qes_step_cancel_restart'\)/)
   assert.match(translations, /Podpis právě probíhá v aplikaci\. Dokončete ho v telefonu, nebo ho zrušte\./)
   assert.match(translations, /Zrušit a začít znovu/)
   assert.match(translations, /Signing is in progress in the app\. Complete it on your phone, or cancel it\./)

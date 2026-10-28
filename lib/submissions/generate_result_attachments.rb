@@ -85,8 +85,6 @@ module Submissions
     def call(submitter)
       return generate_detached_signature_attachments(submitter) if detached_signature?(submitter)
 
-      return Qes::ResultAttachments.call(submitter) if submitter.qes_sessions.completed.exists?
-
       pdfs_index = generate_pdfs(submitter)
 
       account = submitter.account

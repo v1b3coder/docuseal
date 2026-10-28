@@ -44,9 +44,6 @@ Rails.application.routes.draw do
       post :merge, on: :collection
       post :verify, on: :collection
     end
-    resources :qes_documents, only: %i[create], path: 'qes/documents'
-    resources :qes_verifications, only: %i[create], path: 'qes/verify'
-    post 'qes/verified_documents', to: 'qes_verifications#store'
     scope 'events' do
       resources :form_events, only: %i[index], path: 'form/:type'
       resources :submission_events, only: %i[index], path: 'submission/:type'
@@ -114,7 +111,6 @@ Rails.application.routes.draw do
     resources :submissions, only: %i[new create]
     resource :folder, only: %i[edit update], controller: 'templates_folders'
     resource :preview, only: %i[show], controller: 'templates_preview'
-    resource :qes_verification, only: %i[show], controller: 'templates_qes_verifications'
     resource :form, only: %i[show], controller: 'templates_form_preview'
     resource :code_modal, only: %i[show], controller: 'templates_code_modal'
     resource :preferences, only: %i[show create destroy], controller: 'templates_preferences'
@@ -152,24 +148,6 @@ Rails.application.routes.draw do
   resource :submit_form_email_2fa, only: %i[create update]
   resources :start_form_email_2fa_send, only: :create
 
-  namespace :qes do
-    resources :sessions, only: %i[show], param: :token, path: 'sessions' do
-      member do
-        get :document
-        post :certificate
-        post :complete
-        post :complete_submission
-        post :abort
-      end
-    end
-    get 'sign', to: 'app#show'
-    get 'app', to: 'app#show'
-  end
-
-  get '.well-known/apple-app-site-association', to: 'qes/well_known#apple_app_site_association'
-  get '.well-known/assetlinks.json', to: 'qes/well_known#assetlinks'
-  get 'qes-test/root.crl', to: 'qes/test_crl#show'
-
   resources :submit_form, only: %i[], path: '' do
     get :success, on: :collection
   end
@@ -187,9 +165,6 @@ Rails.application.routes.draw do
     resources :upload, only: %i[create], controller: 'submit_form_upload'
     resources :prefill_attachments, only: %i[create], controller: 'submit_form_prefill_attachments'
     resources :debug, only: %i[index], controller: 'submissions_debug' if Rails.env.development?
-    resources :qes_sessions, only: %i[create show], controller: 'qes/form_sessions' do
-      post :cancel, on: :member
-    end
     get :completed
     get :delegated
   end

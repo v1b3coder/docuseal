@@ -6,7 +6,7 @@
       :class="field.description ? 'mb-4' : 'mb-2'"
     >
       <div class="font-medium text-base">
-        {{ field.title || field.name || t('qes_step_title') }}
+        {{ field.title || field.name || qesT('qes_step_title') }}
       </div>
       <div v-if="field.description" class="text-xs text-gray-500">
         {{ field.description }}
@@ -15,17 +15,17 @@
 
     <div class="w-full flex flex-col items-center gap-3" aria-live="polite">
       <template v-if="phase === 'idle'">
-        <p class="text-sm text-gray-600 text-center">{{ t('qes_step_description') }}</p>
+        <p class="text-sm text-gray-600 text-center">{{ qesT('qes_step_description') }}</p>
         <button
           type="button"
           class="btn btn-primary"
           :disabled="dryRun || !!nativePlatform"
-          :title="dryRun ? t('qes_step_preview_disabled') : undefined"
+          :title="dryRun ? qesT('qes_step_preview_disabled') : undefined"
           @click="createSession"
         >
-          {{ t('qes_step_button') }}
+          {{ qesT('qes_step_button') }}
         </button>
-        <p v-if="!!nativePlatform" class="text-xs text-gray-500">{{ t('qes_step_native') }}</p>
+        <p v-if="!!nativePlatform" class="text-xs text-gray-500">{{ qesT('qes_step_native') }}</p>
       </template>
 
       <template v-else-if="phase === 'creating'">
@@ -34,17 +34,17 @@
 
       <template v-else-if="phase === 'awaiting_app'">
         <p class="text-sm text-gray-600 text-center">
-          {{ t(session.error === 'signature_in_progress' ? 'qes_step_in_progress' : 'qes_step_waiting') }}
+          {{ qesT(session.error === 'signature_in_progress' ? 'qes_step_in_progress' : 'qes_step_waiting') }}
         </p>
         <p v-if="error" class="text-sm text-red-700">{{ errorMessage }}</p>
         <div
           v-if="session.qr_svg"
           class="qes-qr bg-white p-2 rounded border"
-          :aria-label="t('qes_step_button')"
+          :aria-label="qesT('qes_step_button')"
           v-html="session.qr_svg"
         />
         <button v-if="session.custom_scheme_link" type="button" class="btn btn-primary" @click="openApp">
-          {{ t('qes_step_open_app') }}
+          {{ qesT('qes_step_open_app') }}
         </button>
         <a
           v-if="session.fallback_url"
@@ -52,7 +52,7 @@
           class="text-xs text-gray-500 underline"
           target="_blank"
         >
-          {{ t('qes_step_no_app') }}
+          {{ qesT('qes_step_no_app') }}
         </a>
         <p class="text-xs text-gray-500">
           {{ expiresInText }}
@@ -64,10 +64,10 @@
           :disabled="restarting"
           @click="restartSession"
         >
-          {{ t('qes_step_cancel_restart') }}
+          {{ qesT('qes_step_cancel_restart') }}
         </button>
         <button v-else type="button" class="btn btn-outline btn-sm" @click="cancelSession">
-          {{ t('qes_step_cancel') }}
+          {{ qesT('qes_step_cancel') }}
         </button>
       </template>
 
@@ -78,16 +78,16 @@
       </template>
 
       <template v-else-if="phase === 'expired'">
-        <p class="text-sm text-red-700">{{ t('qes_error_expired_token') }}</p>
+        <p class="text-sm text-red-700">{{ qesT('qes_error_expired_token') }}</p>
         <button type="button" class="btn btn-primary btn-sm" @click="reset">
-          {{ t('qes_step_new_link') }}
+          {{ qesT('qes_step_new_link') }}
         </button>
       </template>
 
       <template v-else>
         <p class="text-sm text-red-700">{{ errorMessage }}</p>
         <button type="button" class="btn btn-primary btn-sm" @click="reset">
-          {{ t('qes_step_retry') }}
+          {{ qesT('qes_step_retry') }}
         </button>
       </template>
     </div>
@@ -95,6 +95,7 @@
 </template>
 
 <script>
+import qesI18n from './qes_i18n'
 import {
   cancelPath as qesStepCancelPath,
   cancelledState as qesStepCancelledState,
@@ -110,7 +111,7 @@ import {
 
 export default {
   name: 'QesStep',
-  inject: ['baseUrl', 't'],
+  inject: ['baseUrl'],
   props: {
     field: { type: Object, required: true },
     modelValue: { type: String, required: false, default: null },
@@ -135,25 +136,33 @@ export default {
     }
   },
   computed: {
+    qesLocale () {
+      const lang = this.submitter?.metadata?.lang || navigator.language || 'en'
+
+      return String(lang).split('-')[0]
+    },
     minutesLeft() {
       return qesStepMinutesLeft(this.session?.expires_at)
     },
     errorMessage() {
-      return this.error ? this.t(qesStepErrorKey(this.error)) : ''
+      return this.error ? this.qesT(qesStepErrorKey(this.error)) : ''
     },
     // Korenový `t` v `form.vue` neumí interpolaci `{level}`/`{minutes}`;
     // texty z i18n.js proto skládáme tady.
     doneText() {
-      return qesStepDoneText(this.t, this.level)
+      return qesStepDoneText(this.qesT, this.level)
     },
     expiresInText() {
-      return qesStepExpiresInText(this.t, this.minutesLeft)
+      return qesStepExpiresInText(this.qesT, this.minutesLeft)
     }
   },
   beforeUnmount() {
     this.stopPolling()
   },
   methods: {
+    qesT (key) {
+      return qesI18n[this.qesLocale]?.[key] || qesI18n.en[key] || key
+    },
     csrfToken() {
       return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
     },
