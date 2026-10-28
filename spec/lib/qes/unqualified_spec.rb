@@ -29,7 +29,7 @@ RSpec.describe 'QES unqualified CAdES' do
   it 'returns valid_unqualified for a trusted CAdES without QcStatements' do
     pkcs = unqualified_pkcs12
     pdf = QesHelpers.signed_pdf(pkcs:)
-    allow(Qes).to receive(:trust_roots).and_return([pkcs.certificate])
+    allow(Qes).to receive(:verification_trust_roots).and_return([pkcs.certificate])
 
     report = Qes::Verifier.call(pdf, name: 'unqualified.pdf')
 

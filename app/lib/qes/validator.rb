@@ -27,7 +27,7 @@ module Qes
         signature[:ByteRange].value if accepted_signature?(result)
       end
       pdfium = pdfium_report(pdf_bytes, trusted_certs, trusted_ranges:,
-                            allow_dss_changes: true)
+                            allow_dss_changes: true, trust_roots:)
       inspection = if pdfium && pdfium.size == results.size && pdfium.all? { |signature| signature[:verified] }
                      'complete'
                    else
@@ -280,9 +280,9 @@ module Qes
       byte_range[2] + byte_range[3] == pdf_bytes.bytesize ? 'full' : 'partial'
     end
 
-    def pdfium_report(pdf_bytes, trusted_certs, trusted_ranges:, allow_dss_changes: false)
+    def pdfium_report(pdf_bytes, trusted_certs, trusted_ranges:, allow_dss_changes: false, trust_roots: [])
       Qes::PdfiumTrust.report(StringIO.new(pdf_bytes), trusted_certs,
-                              trusted_ranges:, allow_dss_changes:).map do |signature|
+                              trusted_ranges:, allow_dss_changes:, trust_roots:).map do |signature|
         {
           common_name: signature.common_name,
           signing_time: signature.signing_time&.utc&.iso8601,

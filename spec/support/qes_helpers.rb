@@ -346,6 +346,7 @@ module QesHelpers
     Qes::Config.reset!
     Qes::Config[:enabled] = true
     Qes::Config[:trust_roots] = pki_path('root.crt').to_s
+    Qes::Config[:verification_trust_roots] = pki_path('root.crt').to_s
     Qes::Config[:require_ltv] = false
     Qes::Config[:tsa_url] = nil
     Qes::Config[:tsa_required] = false
