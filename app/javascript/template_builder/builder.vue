@@ -4114,7 +4114,7 @@ export default {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}))
-          const message = payload.error || this.t('failed_to_save_template')
+          const message = payload.error || 'Template could not be saved.'
 
           // Autosave běží při každé změně; stejnou chybu nehlásíme opakovaně.
           if (message !== this.lastSaveError) {

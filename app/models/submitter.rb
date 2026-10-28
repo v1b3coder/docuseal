@@ -47,7 +47,6 @@ class Submitter < ApplicationRecord
   has_one :template, through: :submission
   has_one :search_entry, as: :record, inverse_of: :record, dependent: :destroy if SearchEntry.table_exists?
   has_many :submitter_versions, dependent: :destroy
-  has_many :qes_sessions, dependent: :destroy
 
   attribute :values, :string, default: -> { {} }
   attribute :preferences, :string, default: -> { {} }
@@ -72,13 +71,6 @@ class Submitter < ApplicationRecord
   scope :completed, -> { where.not(completed_at: nil) }
 
   before_validation :set_template_id, on: :create
-
-  # Dokončení projde jen s platnými QES podpisy. Guard je v modelu, aby platil
-  # pro formulář, API i jakoukoli budoucí cestu (nález 3.1). Požadavek se
-  # bere z šablony, ne z `submission.template_fields`, které může API přepsat
-  # (nález 2.6).
-  before_validation :ensure_qes_completion, if: -> { Qes.enabled? && completed_at_changed? && completed_at.present? }
-  before_validation :ensure_qes_values, if: -> { Qes.enabled? && values_changed? }
 
   after_destroy :anonymize_email_events, if: -> { Docuseal.multitenant? }
 
@@ -123,7 +115,7 @@ class Submitter < ApplicationRecord
   def with_signature_fields?
     @with_signature_fields ||= begin
       fields = submission.template_fields || template.fields
-      signature_field_types = %w[signature initials qes]
+      signature_field_types = %w[signature initials]
       fields.any? { |f| f['submitter_uuid'] == uuid && signature_field_types.include?(f['type']) }
     end
   end
@@ -138,18 +130,6 @@ class Submitter < ApplicationRecord
 
   def set_template_id
     self.template_id = submission&.template_id
-  end
-
-  def ensure_qes_completion
-    if Qes.missing_required_sessions(self).present?
-      raise Submitters::SubmitValues::ValidationError, 'Required QES signatures are missing'
-    end
-
-    Qes::ValueValidator.call(values, self)
-  end
-
-  def ensure_qes_values
-    Qes::ValueValidator.call(values, self)
   end
 
   def anonymize_email_events

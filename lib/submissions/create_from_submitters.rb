@@ -35,7 +35,7 @@ module Submissions
           if submitter_attrs[:roles].present? && submitter_attrs[:roles].size > 1
             template_submitter, template_submitters, submission.template_fields =
               merge_submitters_and_fields(submitter_attrs, template_submitters,
-                                          (submission.template_fields || submission.template.fields).deep_dup)
+                                          submission.template_fields || submission.template.fields)
 
             submission.template_schema = submission.template.schema if submission.template_schema.blank?
 
@@ -389,9 +389,7 @@ module Submissions
       field['title'] = attrs['title'] if attrs['title'].present?
       field['description'] = attrs['description'] if attrs['description'].present?
       field['readonly'] = attrs['readonly'] if attrs.key?('readonly')
-      # Povinné QES pole je zmrazené při vzniku submissionu; API ho nesmí
-      # vypnout (N1).
-      field['required'] = attrs['required'] if attrs.key?('required') && field['type'] != 'qes'
+      field['required'] = attrs['required'] if attrs.key?('required')
 
       if attrs.key?('default_value') && !field['type'].in?(%w[signature image initials file])
         if attrs['default_value'].present?

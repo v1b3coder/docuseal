@@ -172,7 +172,7 @@ module Qes
         values: Qes::ValueValidator.non_qes_values(session.submitter.values, session.submitter),
         # `renderer` má vždy HTML formát; `render_to_string` by v JSON
         # requestu hledal `icons/_circle_check.json` a spadl by na 500.
-        summary_html: ApplicationController.renderer.render(partial: 'submissions/qes_summary',
+        summary_html: ApplicationController.renderer.render(partial: 'submit_form/qes_summary',
                                                           locals: { session:, compact: true })
       }
     end

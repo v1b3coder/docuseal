@@ -172,6 +172,13 @@ module Qes
     submission.template_schema.presence || submission.template&.schema || []
   end
 
+  # Cesty, které posílají multipart i přes `/api` prefix (SPEC § 5.8, docs/15, docs/16).
+  MULTIPART_PATHS = %w[/qes/documents /qes/verify /qes/verified_documents].freeze
+
+  def self.multipart_path?(path)
+    MULTIPART_PATHS.any? { |suffix| path.to_s.end_with?(suffix) }
+  end
+
   # Bezpečné logování bez osobních údajů (SPEC § 7.9).
   def self.log(session, message = nil)
     parts = ["[qes]", "session=#{session.id}", "submission=#{session.submission_id}",

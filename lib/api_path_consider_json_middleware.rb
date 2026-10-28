@@ -11,11 +11,7 @@ class ApiPathConsiderJsonMiddleware
        !env['PATH_INFO'].ends_with?('/attachments') &&
        !env['PATH_INFO'].ends_with?('/submitter_sms_clicks') &&
        !env['PATH_INFO'].ends_with?('/submitter_email_clicks') &&
-       # Upload PDF pro přímý podpis je multipart (docs/15 § 5.1).
-       !env['PATH_INFO'].ends_with?('/qes/documents') &&
-       # Ověření PDF a uložení ověřeného PDF je také multipart (docs/16).
-       !env['PATH_INFO'].ends_with?('/qes/verify') &&
-       !env['PATH_INFO'].ends_with?('/qes/verified_documents')
+       !Qes.multipart_path?(env['PATH_INFO'])
       env['CONTENT_TYPE'] = 'application/json'
     end
 

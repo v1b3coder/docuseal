@@ -8,15 +8,7 @@ class VerifyPdfSignatureController < ApplicationController
 
     signatures =
       params[:files].map do |file|
-        io = file.open
-        io.binmode if io.respond_to?(:binmode)
-        io.rewind
-
-        if Qes::Config[:enabled]
-          Qes::PdfiumTrust.report(io, trusted_certs)
-        else
-          VerifyPdfSignature.call(io, trusted_certs)
-        end
+        VerifyPdfSignature.call(file.open, trusted_certs)
       end
 
     render turbo_stream: turbo_stream.replace('result', partial: 'result',

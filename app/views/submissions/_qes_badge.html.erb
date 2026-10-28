@@ -1,0 +1,8 @@
+<%# Metadata QES podpisu v kartě podepisujícího (SPEC § 13). %>
+<% report = session.validation_report || {} %>
+<% intact = report['intact'] == true %>
+<div class="flex items-center space-x-1 mt-1 text-sm">
+  <%= svg_icon(intact ? 'circle_check' : 'x_circle',
+               class: "w-5 h-5 #{intact ? 'text-green-500' : 'text-red-500'}") %>
+  <span><%= t('qes.summary.signed_with_certificate', level: session.level.to_s.upcase) %></span>
+</div>

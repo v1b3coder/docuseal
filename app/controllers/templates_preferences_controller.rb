@@ -23,13 +23,9 @@ class TemplatesPreferencesController < ApplicationController
 
     @template.preferences = @template.preferences.merge(template_params[:preferences])
     @template.preferences = @template.preferences.reject { |_, v| (v.is_a?(String) || v.is_a?(Hash)) && v.blank? }
+    @template.save!
 
-    if @template.save
-      head :ok
-    else
-      @error = template_errors_message
-      render :show, layout: 'plain', status: :unprocessable_content
-    end
+    head :ok
   end
 
   def destroy
@@ -52,11 +48,6 @@ class TemplatesPreferencesController < ApplicationController
   end
 
   private
-
-  def template_errors_message
-    @template.errors.map { |error| I18n.t("qes.error.#{error.message}", default: error.full_message) }
-                     .to_sentence
-  end
 
   def template_params
     params.require(:template).permit(
