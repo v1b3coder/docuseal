@@ -1024,6 +1024,7 @@ export default {
       withPhone: this.withPhone,
       withVerification: this.withVerification,
       withKba: this.withKba,
+      withQes: this.withQes,
       withPayment: this.withPayment,
       isStripeConnected: this.isStripeConnected,
       withStripe: this.withStripe,
@@ -1305,6 +1306,11 @@ export default {
       required: false,
       default: null
     },
+    withQes: {
+      type: Boolean,
+      required: false,
+      default: false
+    },
     withPayment: {
       type: Boolean,
       required: false,
@@ -1378,6 +1384,7 @@ export default {
       isBreakpointMd: false,
       isDownloading: false,
       isPreviewLoading: false,
+      lastSaveError: null,
       isLoadingBlankPage: false,
       isSaving: false,
       hasUnsavedChanges: false,
@@ -4102,12 +4109,29 @@ export default {
           }
         }),
         headers: { 'Content-Type': 'application/json' }
-      }).then(() => {
+      }).then(async (response) => {
         this.hasUnsavedChanges = false
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          const message = payload.error || this.t('failed_to_save_template')
+
+          // Autosave běží při každé změně; stejnou chybu nehlásíme opakovaně.
+          if (message !== this.lastSaveError) {
+            alert(message)
+            this.lastSaveError = message
+          }
+
+          return response
+        }
+
+        this.lastSaveError = null
 
         if (this.onSave) {
           this.onSave(this.template)
         }
+
+        return response
       })
     },
     captureRevision () {
