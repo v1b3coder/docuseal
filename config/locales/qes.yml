@@ -13,7 +13,7 @@ en:
       qes_required_qscd: A qualified certificate (QES) is required.
       level_mismatch: The selected certificate does not match the signature type.
       not_qualified: The certificate is not qualified. Use a certificate from I.CA/PostSignum.
-      not_trusted: The certificate is not trusted. Use a certificate from a trusted CA (I.CA/PostSignum).
+      not_trusted: The certificate is not trusted by this server (its CA is not in the trust store).
       revoked: The certificate has been revoked.
       invalid_certificate: The certificate could not be read. Check it and try again.
       certificate_expired: The certificate has expired. Import a new one.
@@ -131,7 +131,7 @@ cs:
       qes_required_qscd: Vyžaduje se kvalifikovaný certifikát (QES).
       level_mismatch: Vybraný certifikát neodpovídá typu podpisu.
       not_qualified: Certifikát není kvalifikovaný. Použijte certifikát od I.CA/PostSignum.
-      not_trusted: Certifikát není důvěryhodný. Použijte certifikát od důvěryhodné CA (I.CA/PostSignum).
+      not_trusted: Certifikát není pro tento server důvěryhodný (jeho CA není v trust store).
       revoked: Certifikát byl revokován.
       invalid_certificate: Certifikát se nepodařilo načíst. Zkontrolujte ho a zkuste to znovu.
       certificate_expired: Platnost certifikátu vypršela. Importujte nový.

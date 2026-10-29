@@ -100,14 +100,18 @@ module Qes
     # CRL DP bývá v certifikátu víckrát (PostSignum); zkusí se všechny a použije
     # se CRL s nejvyšším `crlNumber` (nález 2.7).
     def fetch_first_crl(urls)
+      errors = []
       crls = urls.filter_map do |url|
         fetch_crl(url)
       rescue FetchError => e
+        errors << e.message
         Rails.logger.warn("[qes] CRL fetch failed: #{e.message}")
         nil
       end
 
-      raise FetchError, 'No CRL could be fetched' if crls.empty?
+      # Důvod (hlavně odmítnutý host) musí dojít ke klientovi, jinak se chybějící
+      # allowlist pozná jen z logu serveru.
+      raise FetchError, "No CRL could be fetched: #{errors.uniq.join('; ')}" if crls.empty?
 
       crls.max_by { |crl| crl_number(crl) || 0 }
     end

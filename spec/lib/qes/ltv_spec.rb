@@ -179,6 +179,33 @@ RSpec.describe Qes::Ltv do
         .not_to raise_error
     end
 
+    # I.CA CRL DP jsou jen http a https na qcrldp1.ica.cz neodpovídá, takže
+    # prázdný allowlist (jen https + veřejná adresa) pro I.CA nestačí.
+    it 'allows the I.CA CRL hosts from the default allowlist' do
+      Qes::Config.reset!
+      allow(described_class).to receive(:resolved_addresses).with('qcrldp1.ica.cz')
+        .and_return(['93.185.100.10'])
+
+      expect { described_class.validate_url!(URI.parse('http://qcrldp1.ica.cz/rca22_rsa.crl')) }
+        .not_to raise_error
+    end
+
+    it 'covers every I.CA CRL distribution point host from the verification bundle' do
+      allowed = Qes::Config::DEFAULTS[:ltv_allowed_hosts].split(',')
+      certs = Rails.root.join('config/qes/czech.pem').read
+                   .scan(/-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----/m)
+                   .map { |pem| OpenSSL::X509::Certificate.new(pem) }
+      hosts = certs.filter_map do |cert|
+        # `subject.to_s` je ASCII-8BIT s escapovanými bajty, proto se hledá jen ASCII část CN.
+        next unless cert.subject.to_s.include?('I.CA')
+
+        described_class.crl_urls(cert).filter_map { |url| URI.parse(url).host }.first
+      end
+
+      expect(hosts).not_to be_empty
+      expect(allowed).to include(*hosts)
+    end
+
     it 'rejects a host outside the allowlist' do
       expect { described_class.validate_url!(URI.parse('http://127.0.0.1:8765/root.crl')) }
         .not_to raise_error
@@ -207,6 +234,16 @@ RSpec.describe Qes::Ltv do
     it 'rejects unsupported schemes' do
       expect { described_class.validate_url!(URI.parse('file:///etc/passwd')) }
         .to raise_error(Qes::Ltv::FetchError, /scheme/)
+    end
+  end
+
+  describe '.fetch_first_crl' do
+    # Odmítnutý host se musí dostat ke klientovi, ne jen do logu serveru.
+    it 'names the rejected host when no CRL can be fetched' do
+      Qes::Config[:ltv_allowed_hosts] = 'crl.postsignum.cz'
+
+      expect { described_class.fetch_first_crl(['http://127.0.0.1:8765/root.crl']) }
+        .to raise_error(Qes::Ltv::FetchError, /127\.0\.0\.1.*QES_LTV_ALLOWED_HOSTS/)
     end
   end
 end
