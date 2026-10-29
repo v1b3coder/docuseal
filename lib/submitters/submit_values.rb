@@ -74,7 +74,9 @@ module Submitters
       submitter.ua = request.user_agent
       submitter.timezone = request.params[:timezone]
 
-      return Qes::Hooks.finalize_values(submitter, required_field_uuids_acc: Set.new) if Qes.active_for?(submitter.submission)
+      if Qes.active_for?(submitter.submission) && submitter.qes_sessions.completed.exists?
+        return Qes::Hooks.finalize_values(submitter, required_field_uuids_acc: Set.new)
+      end
 
       submitter.values = merge_default_values(submitter)
 

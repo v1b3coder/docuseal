@@ -79,4 +79,22 @@ RSpec.describe 'QES completion requirements', type: :request do
     expect(response).to have_http_status(:unprocessable_content)
     expect(response.parsed_body['error']).to eq('Required QES signatures are missing')
   end
+
+  # #2: volitelné QES pole nesmí vypnout kontrolu povinných polí (regrese d845ba42).
+  it 'rejects completion with a missing required value when the QES field is optional' do
+    submission = QesHelpers.build_qes_submission
+    submitter = submission.submitters.first
+    text = submission.template_fields.find { |field| field['type'] == 'text' && field['required'] }
+    fields = submission.template_fields.map do |field|
+      field['type'] == 'qes' ? field.merge('required' => false) : field
+    end
+    submission.update!(template_fields: fields)
+    submitter.update!(values: {})
+
+    put submit_form_path(slug: submitter.slug), params: { completed: 'true' }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body['field_uuid']).to eq(text['uuid'])
+    expect(submitter.reload.completed_at).to be_nil
+  end
 end
