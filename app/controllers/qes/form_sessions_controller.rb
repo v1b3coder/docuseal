@@ -21,8 +21,8 @@ module Qes
       return render_qes_error_with(:unknown_field, :not_found) if field.nil?
       return render_qes_error_with(:wrong_field_type, :unprocessable_content) unless field['type'] == 'qes'
 
-      if @submitter.completed_at? || @submitter.declined_at? || @submitter.submission.archived_at?
-        return render_qes_error_with(:form_not_active, :unprocessable_content)
+      if @submitter.completed_at? || @submitter.declined_at? || inactive_submission?(@submitter.submission)
+        return render_qes_error_with(:form_not_active, :gone)
       end
 
       # Řetězení PAdES vyžaduje striktní pořadí (SPEC § 4.6); formulář se sice

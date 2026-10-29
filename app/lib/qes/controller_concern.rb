@@ -37,6 +37,22 @@ module Qes
       render_qes_error_with(:wrong_state, :conflict)
     end
 
+    # Stav submissionu (SPEC § 5.3.1): stejné podmínky jako upstream
+    # `SubmitFormController#update` a `#maybe_render_locked_page` — archivovaná
+    # šablona i submission a prošlý `expire_at`. Session token je kapabilita
+    # a nesmí přežít smrt dokumentu; jinak podepisující dokončí smlouvu,
+    # kterou odesílatel zrušil (#14).
+    def inactive_submission?(submission)
+      submission.template&.archived_at.present? || submission.archived_at.present? || submission.expired?
+    end
+
+    def reject_inactive_submission(submission)
+      return false unless inactive_submission?(submission)
+
+      render_qes_error_with(:form_not_active, :gone)
+      true
+    end
+
     def render_qes_error_with(code, status, message: nil)
       message ||= I18n.t("qes.error.#{code}", default: code.to_s)
 
