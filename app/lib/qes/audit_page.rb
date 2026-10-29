@@ -32,6 +32,7 @@ module Qes
         row(I18n.t('qes.audit.certificate_serial'), info['serial']),
         row(I18n.t('qes.audit.level'), session.level.to_s.upcase),
         row(I18n.t('qes.audit.key_location'), session.key_location),
+        *app_rows(session),
         *time_rows(session),
         row(I18n.t('qes.audit.document_digest'), session.document_digest),
         row(I18n.t('qes.audit.signed_pdf_sha256'), session.signed_pdf_sha256),
@@ -39,6 +40,17 @@ module Qes
         row(I18n.t('qes.audit.validation'), validation_text(report)),
         row(I18n.t('qes.audit.seal'), session.seal_state),
         row(I18n.t('qes.audit.protocol'), '1')
+      ].compact
+    end
+
+    # Self-reported metadata z appky (SPEC § 5.4); staré sessiony ji nemají.
+    def app_rows(session)
+      metadata = session.app_metadata
+      return [] unless metadata.respond_to?(:[])
+
+      [
+        row(I18n.t('qes.audit.app_platform'), metadata['platform']),
+        row(I18n.t('qes.audit.app_version'), metadata['version'])
       ].compact
     end
 
