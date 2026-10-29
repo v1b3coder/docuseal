@@ -5,6 +5,7 @@ require 'rails_helper'
 # N3: generátor výsledného PDF se vybírá podle dokončené QES session, ne podle
 # šablony. Volitelné `qes` pole bez podpisu musí dostat upstream PDF (jinak
 # nevznikne nic) a dokončená session musí zůstat finálním PDF i po změně šablony.
+# `QES_ENABLED=false` zůstává feature gate: QES kód se pak nespustí.
 RSpec.describe 'QES result attachments' do
   before do
     QesHelpers.configure!
@@ -56,6 +57,19 @@ RSpec.describe 'QES result attachments' do
     documents = Submissions::GenerateResultAttachments.call(submitter)
 
     expect(documents.map(&:download)).to eq([session.final_document.download])
+  end
+
+  it 'uses the upstream generator when QES is disabled even with a completed session' do
+    submission = QesHelpers.build_qes_submission
+    submitter = submission.submitters.first
+    complete_session(submitter)
+    submitter.update!(completed_at: Time.current)
+    Qes::Config[:enabled] = false
+
+    documents = Submissions::GenerateResultAttachments.call(submitter)
+
+    expect(documents).to be_present
+    expect(documents.first.download).not_to eq(submitter.qes_sessions.completed.last.final_document.download)
   end
 
   it 'uses the QES final document for the merged document when a session is completed' do

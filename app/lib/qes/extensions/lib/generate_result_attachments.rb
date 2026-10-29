@@ -6,8 +6,9 @@ module Qes
       module GenerateResultAttachments
         # Rozhoduje dokončená QES session, ne šablona (nález #3): volitelné
         # `qes` pole bez podpisu musí dostat upstream PDF, ne prázdný výsledek.
+        # `Qes.enabled?` zůstává feature gate — s vypnutým QES se QES kód nespouští.
         def call(submitter)
-          return super unless submitter.qes_sessions.completed.exists?
+          return super unless Qes.enabled? && submitter.qes_sessions.completed.exists?
 
           Qes::ResultAttachments.call(submitter)
         end
