@@ -78,7 +78,8 @@ module Qes
       # musí vrátit certificate_expired, ne not_trusted (N3).
       info.validate!(level_required: @session.level_required, key_location:)
       certificate = info.certificate
-      Qes::Validator.verify_chain!(certificate, chain, provider.trust_roots)
+      # Revokace i DSS jdou z ověřeného řetězu, ne z certů od klienta (#19).
+      chain = Qes::Validator.verify_chain!(certificate, chain, provider.trust_roots).drop(1).map(&:to_der)
 
       # CRL fetch (síť) mimo DB transakci; transakce pak drží jen zápis (M20).
       crls = Qes::Ltv.fetch_crls(certificate_der, chain:)

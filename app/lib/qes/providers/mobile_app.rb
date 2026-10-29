@@ -157,7 +157,9 @@ module Qes
 
         Qes::Ltv.check_revoked!(certificates.first, chain:, crls: crls || [])
 
-        crls && { crls: crls.map(&:to_der) }
+        # Do DSS jde celý ověřený řetěz, ne jen certy od klienta: mezilehlý
+        # cert z trust bundlu musí být v PDF pro offline validaci (#19).
+        { crls: crls ? crls.map(&:to_der) : [], certs: verified.map(&:to_der) }
       end
 
       def embed(cms_der)
@@ -216,7 +218,7 @@ module Qes
         cms_der = build_cms(signature)
         signed_pdf = embed(cms_der)
         report = validate(signed_pdf)
-        report[:revocation] = 'not_checked' if revocation_data&.fetch(:crls, []).blank?
+        report[:revocation] = 'not_checked' if revocation_data[:crls].blank?
 
         # `ok` obsahuje intact + trusted (proti trust rootům) + plné pokrytí;
         # bez trusted by se AdES/self-signed certifikát zapsal jako QES (SPEC § 4.3).
@@ -230,8 +232,8 @@ module Qes
         # pečeť ani DocTS; proto netvrdíme úplné PAdES-LTA (S6).
         signed_pdf = Qes::Dss.apply(
           signed_pdf,
-          crls: revocation_data&.fetch(:crls, []),
-          certs: certificate_chain_der,
+          crls: revocation_data[:crls],
+          certs: revocation_data[:certs],
           signature_contents: signature_contents(signed_pdf)
         )
 
@@ -344,10 +346,6 @@ module Qes
 
       def normalize_chain(chain)
         Array(chain).map { |cert| cert.is_a?(OpenSSL::X509::Certificate) ? cert.to_der : cert }
-      end
-
-      def certificate_chain_der
-        session.certificate_chain.map { |der| Base64.decode64(der) }
       end
 
       # Raw `/Contents` (včetně paddingu) pro VRI klíč v DSS.
