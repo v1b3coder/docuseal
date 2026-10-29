@@ -211,9 +211,11 @@ module Qes
         raise ClientError.new(:not_trusted, 'No QES trust roots configured')
       end
 
-      return if trusted_chain?(certificate, chain, trust_roots)
+      ok, verified = verified_chain(certificate, chain, trust_roots)
+      raise ClientError.new(:not_trusted, 'Certificate chain does not lead to a trusted root') unless ok
 
-      raise ClientError.new(:not_trusted, 'Certificate chain does not lead to a trusted root')
+      # Volající potřebuje řetěz, který store skutečně postavil (revokace, DSS).
+      verified
     end
 
     # Důvěryhodnost vůči trust anchorům. Do store se musí přidat i intermediate

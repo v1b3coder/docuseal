@@ -7,7 +7,7 @@ require 'rails_helper'
 RSpec.describe Qes::Ltv do
   before { QesHelpers.configure! }
 
-  def issue_certificate(name, issuer: nil, issuer_key: nil, ca: false)
+  def issue_certificate(name, issuer: nil, issuer_key: nil, ca: false, cdp: nil)
     key = OpenSSL::PKey::RSA.new(2048)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
@@ -21,6 +21,7 @@ RSpec.describe Qes::Ltv do
     factory.subject_certificate = cert
     factory.issuer_certificate = issuer || cert
     cert.add_extension(factory.create_extension('basicConstraints', ca ? 'CA:TRUE' : 'CA:FALSE', true))
+    cert.add_extension(factory.create_extension('crlDistributionPoints', "URI:#{cdp}")) if cdp
     cert.sign(issuer_key || key, OpenSSL::Digest.new('SHA256'))
 
     [key, cert]
@@ -92,6 +93,33 @@ RSpec.describe Qes::Ltv do
 
       expect(described_class.collect_revocation_data(leaf, chain: [intermediate]))
         .to eq([leaf_crl, root_crl])
+    end
+
+    it 'rejects a non-root certificate without CRL DP when LTV is required' do
+      Qes::Config[:require_ltv] = true
+      leaf_with_cdp = issue_certificate('Leaf', issuer: intermediate, issuer_key: intermediate_key,
+                                                cdp: 'https://crl.test/leaf').last
+      leaf_crl = issue_crl(intermediate, intermediate_key)
+      allow(described_class).to receive(:fetch_first_crl)
+        .with(['https://crl.test/leaf']).and_return(leaf_crl)
+
+      expect { described_class.fetch_crls(leaf_with_cdp, chain: [intermediate]) }
+        .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:ltv_unavailable) }
+      expect { described_class.check_revoked!(leaf_with_cdp, chain: [intermediate], crls: [leaf_crl]) }
+        .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:ltv_unavailable) }
+    end
+
+    it 'accepts a non-root certificate without CRL DP when LTV is not required' do
+      Qes::Config[:require_ltv] = false
+      leaf_with_cdp = issue_certificate('Leaf', issuer: intermediate, issuer_key: intermediate_key,
+                                                cdp: 'https://crl.test/leaf').last
+      leaf_crl = issue_crl(intermediate, intermediate_key)
+      allow(described_class).to receive(:fetch_first_crl)
+        .with(['https://crl.test/leaf']).and_return(leaf_crl)
+
+      expect(described_class.collect_revocation_data(leaf_with_cdp, chain: [intermediate])).to eq([leaf_crl])
+      expect { described_class.check_revoked!(leaf_with_cdp, chain: [intermediate], crls: [leaf_crl]) }
+        .not_to raise_error
     end
 
     it 'rejects delta CRLs instead of treating them as complete CRLs' do

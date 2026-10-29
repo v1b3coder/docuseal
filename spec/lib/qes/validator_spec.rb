@@ -354,8 +354,9 @@ RSpec.describe Qes::Validator do
       .to raise_error(Qes::ClientError) { |e| expect(e.code).to eq(:not_trusted) }
   end
 
-  it 'accepts a certificate issued directly by the trust root' do
-    expect(described_class.verify_chain!(QesHelpers.certificate, QesHelpers.chain, QesHelpers.trust_roots))
-      .to be_nil
+  it 'accepts a certificate issued directly by the trust root and returns the verified chain' do
+    verified = described_class.verify_chain!(QesHelpers.certificate, QesHelpers.chain, QesHelpers.trust_roots)
+
+    expect(verified.map(&:to_der)).to include(QesHelpers.certificate.to_der)
   end
 end

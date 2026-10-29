@@ -6,6 +6,8 @@ require 'rails_helper'
 # OpenSSL store (včetně intermediate certů z trust bundle), ne jen nad certy,
 # které poslal klient.
 RSpec.describe 'QES chain revocation' do
+  before { QesHelpers.configure! }
+
   def certificate(subject, issuer: nil, issuer_key: nil, key:, serial:, ca:)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
@@ -73,5 +75,16 @@ RSpec.describe 'QES chain revocation' do
 
     expect(Qes::Ltv).to have_received(:check_revoked!)
       .with(leaf, chain: array_including(intermediate), crls: [intermediate_crl])
+  end
+
+  it 'returns the verified chain for DSS, not only the client chain' do
+    allow(Qes).to receive(:trust_roots).and_return([root, intermediate])
+    allow(Qes::Ltv).to receive(:fetch_crls).and_return([intermediate_crl])
+    allow(Qes::Ltv).to receive(:check_revoked!)
+
+    session = build(:qes_session, certificate_chain: [leaf].map { |cert| Base64.strict_encode64(cert.to_der) })
+    values = Qes::Providers::MobileApp.new(session).send(:ltv_values)
+
+    expect(values[:certs]).to include(leaf.to_der, intermediate.to_der)
   end
 end

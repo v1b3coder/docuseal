@@ -651,9 +651,8 @@ RSpec.describe 'Qes sessions API', type: :request do
     create_qes_session(token: 'chain-first')
     verified = false
     allow(Qes::Validator).to receive(:verify_chain!).and_wrap_original do |original, *args|
-      original.call(*args)
       verified = true
-      nil
+      original.call(*args)
     end
     expect(Qes::Ltv).to receive(:fetch_crls) do
       expect(verified).to be true
@@ -666,6 +665,45 @@ RSpec.describe 'Qes sessions API', type: :request do
     }
 
     expect(response).to have_http_status(:ok)
+  end
+
+  # #19: do session se ukládá ověřený řetěz, ne jen certy od klienta;
+  # mezilehlý cert z trust bundlu musí dojít do CMS i DSS.
+  it 'stores the verified chain, not only the certificates sent by the client' do
+    ca = lambda do |name, issuer, issuer_key|
+      key = OpenSSL::PKey::RSA.new(2048)
+      cert = OpenSSL::X509::Certificate.new
+      cert.version = 2
+      cert.serial = OpenSSL::BN.rand(64)
+      cert.subject = OpenSSL::X509::Name.parse("/CN=#{name}")
+      cert.issuer = issuer ? issuer.subject : cert.subject
+      cert.public_key = key.public_key
+      cert.not_before = Time.current - 60
+      cert.not_after = Time.current + 1.day
+      factory = OpenSSL::X509::ExtensionFactory.new
+      factory.subject_certificate = cert
+      factory.issuer_certificate = issuer || cert
+      cert.add_extension(factory.create_extension('basicConstraints', 'CA:TRUE', true))
+      cert.add_extension(factory.create_extension('keyUsage', 'keyCertSign,cRLSign', true))
+      cert.sign(issuer_key || key, OpenSSL::Digest.new('SHA256'))
+      [key, cert]
+    end
+    root_key, root = ca.call('Verified Root', nil, nil)
+    intermediate_key, intermediate = ca.call('Verified Intermediate', root, root_key)
+    _leaf_key, leaf = QesHelpers.self_signed_qc_sscd_certificate
+    leaf.issuer = intermediate.subject
+    leaf.sign(intermediate_key, OpenSSL::Digest.new('SHA256'))
+    allow(Qes).to receive(:trust_roots).and_return([root, intermediate])
+    allow(Qes::Ltv).to receive(:check_revoked!)
+
+    session, = create_qes_session(token: 'verified-chain')
+    post '/qes/sessions/verified-chain/certificate', params: {
+      certificate: Base64.strict_encode64(leaf.to_der), chain: [], key_location: 'card'
+    }
+
+    expect(response).to have_http_status(:ok)
+    stored = session.reload.certificate_chain.map { |der| Base64.decode64(der) }
+    expect(stored).to include(leaf.to_der, intermediate.to_der)
   end
 
   it 'clears the failure code when a rejected certificate is followed by a valid one' do

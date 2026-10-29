@@ -59,7 +59,9 @@ module Qes
         next if index.positive? && self_signed?(cert)
 
         matching = Array(crls).select { |crl| crl.issuer == cert.issuer }
-        if matching.empty? && crl_distribution_point?(cert)
+        # Při require_ltv musí mít každý ne-kořenový cert svůj CRL; cert bez CDP
+        # se nesmí jen přeskočit (nález #19).
+        if matching.empty? && (Qes::Config[:require_ltv] || crl_distribution_point?(cert))
           raise FetchError, 'No matching CRL available'
         end
 
@@ -84,9 +86,14 @@ module Qes
         next if index.positive? && self_signed?(cert)
 
         urls = crl_urls(cert)
-        next unless crl_distribution_point?(cert) || urls.present?
+        if urls.empty?
+          # CDP bez URL je chyba vždy; cert bez CDP se při require_ltv nesmí přeskočit.
+          if Qes::Config[:require_ltv] || crl_distribution_point?(cert)
+            raise FetchError, 'No usable CRL distribution point'
+          end
 
-        raise FetchError, 'No usable CRL distribution point' if urls.empty?
+          next
+        end
 
         crl = fetch_first_crl(urls)
         issuer = issuer_for(cert, certs + Qes.trust_roots)
