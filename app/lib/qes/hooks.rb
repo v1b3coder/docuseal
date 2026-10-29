@@ -6,18 +6,6 @@ module Qes
   module Hooks
     module_function
 
-    def result_attachments(submitter)
-      return unless Qes.active_for?(submitter.submission)
-
-      Qes::ResultAttachments.call(submitter)
-    end
-
-    def combined_attachment(submitter, with_audit:)
-      return unless Qes.active_for?(submitter.submission)
-
-      Qes::ResultAttachments.combined_document(submitter, with_audit:)
-    end
-
     def pdf_signatures(io, trusted_certs)
       return unless Qes.enabled?
 
