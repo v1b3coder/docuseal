@@ -20,6 +20,9 @@ module Qes
           return if template.blank? || template.fields.none? { |field| field['type'] == 'qes' }
 
           self.submitters_order = :preserved
+          # Požadavky QES polí (level, required) se zmrazí při vzniku
+          # submissionu (#16); dál se čtou ze snapshotu, ne z šablony.
+          self.template_fields ||= template.fields.deep_dup
         end
       end
     end

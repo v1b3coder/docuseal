@@ -9,13 +9,27 @@ module Qes
         end
 
         def assign_field_attrs(field, attrs)
-          # `required` QES pole je zmrazené ve snapshotu submissionu (N1);
-          # API ho nesmí změnit ani na true, ani na false.
+          # `required` i `level` QES pole jsou zmrazené ve snapshotu submissionu
+          # (N1, #16); API je nesmí změnit. Čtou se ze submissionu, ne ze
+          # šablony: při vzniku je snapshot zkopírovaný z šablony a pak už se
+          # nemění, takže úprava šablony ani API nemá na rozběhnutou submission
+          # vliv.
           # `QES_ENABLED=false` je feature gate (nález #10): s vypnutým QES
           # platí upstream pravidlo a hodnota z API se použije.
           snapshot_required = field['required']
+          snapshot_level = field.dig('preferences', 'level')
           result = super
-          field['required'] = snapshot_required if Qes.enabled? && field['type'] == 'qes' && attrs.key?('required')
+
+          return result unless Qes.enabled? && field['type'] == 'qes'
+
+          field['required'] = snapshot_required if attrs.key?('required')
+
+          if attrs['preferences'].present?
+            preferences = (field['preferences'] || {}).except('level')
+            preferences['level'] = snapshot_level if snapshot_level.present?
+            field['preferences'] = preferences.presence
+          end
+
           result
         end
       end
