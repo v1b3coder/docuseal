@@ -159,6 +159,27 @@ module QesHelpers
     OpenSSL::PKCS12.create('test', 'ca', key, certificate)
   end
 
+  # Nový list se stejným klíčem jako cert účtu (nález #12): jiné CN, podpisový
+  # keyUsage, CA:FALSE. `to_der` se liší, veřejný klíč je stejný.
+  def reissued_leaf(original, key:, cn: '/CN=Reissued')
+    certificate = OpenSSL::X509::Certificate.new
+    certificate.version = 2
+    certificate.serial = OpenSSL::BN.rand(64)
+    certificate.subject = OpenSSL::X509::Name.parse(cn)
+    certificate.issuer = certificate.subject
+    certificate.public_key = original.public_key
+    certificate.not_before = Time.current - 60
+    certificate.not_after = Time.current + 1.day
+    factory = OpenSSL::X509::ExtensionFactory.new
+    factory.subject_certificate = certificate
+    factory.issuer_certificate = certificate
+    certificate.add_extension(factory.create_extension('basicConstraints', 'CA:FALSE', true))
+    certificate.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
+    certificate.sign(key, OpenSSL::Digest.new('SHA256'))
+
+    certificate
+  end
+
   # Raw `/Contents` posledního podpisu (pro VRI klíč v DSS).
   def signature_contents(pdf_bytes)
     HexaPDF::Document.new(io: StringIO.new(pdf_bytes)).signatures.to_a.last[:Contents].to_s

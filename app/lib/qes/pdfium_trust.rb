@@ -100,18 +100,20 @@ module Qes
       when 'adbe.pkcs7.detached'
         VerifyPdfSignature.trusted_signature?(signature, trusted_certs)
       when 'ETSI.CAdES.detached'
-        # CAdES přes certy účtu (R2), ale jen podpisový list — CA cert ani
-        # cert s keyEncipherment nesmí být trusted (K1).
-        signing_leaf?(signature) && VerifyPdfSignature.trusted_signature?(signature, trusted_certs)
+        # CAdES přes certy účtu (R2) smí být trusted jen při přesné shodě
+        # certu, ne klíče: nový list se stejným klíčem a jiným CN by jinak
+        # prošel (nález #12). `signing_leaf?` drží K1 (CA / keyEncipherment).
+        account_leaf?(signature, trusted_certs)
       else
         false
       end
     end
 
-    def signing_leaf?(signature)
+    def account_leaf?(signature, trusted_certs)
       signer = VerifyPdfSignature.signer_certificate(OpenSSL::PKCS7.new(signature.contents))
 
-      signer.present? && Qes::CertificateInfo.new(signer).signing_leaf?
+      signer.present? && Qes::CertificateInfo.new(signer).signing_leaf? &&
+        trusted_certs.any? { |cert| cert.to_der == signer.to_der }
     rescue OpenSSL::PKCS7::PKCS7Error
       false
     end
