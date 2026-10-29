@@ -58,4 +58,41 @@ RSpec.describe Qes::Config do
 
     expect(described_class[:enabled]).to be(true)
   end
+
+  describe 'trust root files' do
+    let(:root) { Rails.root.join('config/qes/postsignum.pem').to_s }
+    let(:missing) { "/tmp/qes-missing-#{SecureRandom.hex(4)}.pem" }
+
+    before { allow(Rails.logger).to receive(:warn) }
+
+    it 'loads every certificate from the listed files' do
+      described_class[:trust_roots] = [root, missing]
+
+      expect(Qes.trust_roots.size).to eq(OpenSSL::X509::Certificate.load_file(root).size)
+    end
+
+    it 'warns about a listed file that does not exist' do
+      described_class[:trust_roots] = [root, missing]
+
+      Qes.trust_roots
+
+      expect(Rails.logger).to have_received(:warn)
+        .with(/trust root file not found: #{Regexp.escape(missing)}/)
+    end
+
+    it 'warns only once per missing file' do
+      described_class[:trust_roots] = missing
+
+      2.times { Qes.trust_roots }
+
+      expect(Rails.logger).to have_received(:warn).with(/trust root file not found/).once
+    end
+
+    it 'ignores blank entries in a comma-separated list' do
+      described_class[:trust_roots] = "#{root}, ,#{root}"
+
+      expect(Qes.trust_roots.size).to eq(2 * OpenSSL::X509::Certificate.load_file(root).size)
+      expect(Rails.logger).not_to have_received(:warn)
+    end
+  end
 end

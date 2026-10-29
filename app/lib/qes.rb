@@ -133,15 +133,29 @@ module Qes
 
   def self.load_roots(paths)
     paths = paths.split(',') if paths.is_a?(String)
+    files = Array(paths).map { |path| path.to_s.strip }.reject(&:blank?)
 
-    Array(paths).flat_map do |path|
-      path = path.strip
-      next [] if path.blank? || !File.exist?(path)
+    files.flat_map do |path|
+      unless File.file?(path)
+        warn_missing_root(path)
+        next []
+      end
 
       OpenSSL::X509::Certificate.load_file(path)
     end
   end
   private_class_method :load_roots
+
+  # Cesta v seznamu je závazek: soubor, který se nenačetl, se nesmí ztratit.
+  # Jinak překlep ve `QES_TRUST_ROOTS` vypadá stejně jako "žádné kořeny"
+  # a podpis selže na `not_trusted` bez stopy po příčině (issue #8).
+  def self.warn_missing_root(path)
+    @warned_missing_roots ||= Set.new
+    return unless @warned_missing_roots.add?(path)
+
+    Rails.logger&.warn("[qes] trust root file not found: #{path}")
+  end
+  private_class_method :warn_missing_root
 
   # Pole šablony submissionu. U submissions vytvořených z UI bývá `template_fields`
   # prázdné (plní se až při odeslání formuláře) — stejný fallback jako upstream
