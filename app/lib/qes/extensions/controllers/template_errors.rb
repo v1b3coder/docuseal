@@ -7,6 +7,8 @@ module Qes
       module TemplateErrors
         extend ActiveSupport::Concern
 
+        QES_ERROR_PREFIX = 'qes_'
+
         prepended do
           rescue_from ActiveRecord::RecordInvalid, with: :render_qes_template_error
         end
@@ -14,9 +16,12 @@ module Qes
         private
 
         def render_qes_template_error(error)
-          raise error unless Qes.enabled? && @template&.fields&.any? { |field| field['type'] == 'qes' }
+          record = error.record
 
-          message = @template.errors.map do |item|
+          # Jiný záznam nebo jiná validace = upstream chování (500), ne QES 422.
+          raise error unless Qes.enabled? && qes_template_error?(record)
+
+          message = record.errors.map do |item|
             I18n.t("qes.error.#{item.message}", default: item.full_message)
           end.to_sentence
 
@@ -26,6 +31,12 @@ module Qes
             flash.now[:alert] = message
             render :show, layout: 'plain', status: :unprocessable_content
           end
+        end
+
+        def qes_template_error?(record)
+          record.is_a?(Template) &&
+            record.errors.present? &&
+            record.errors.all? { |item| item.message.to_s.start_with?(QES_ERROR_PREFIX) }
         end
       end
     end
