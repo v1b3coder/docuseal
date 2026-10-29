@@ -57,4 +57,58 @@ RSpec.describe 'QES session concurrency', type: :request do
       Qes::Providers::MobileApp.new(session).complete!('signature')
     end.to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:document_set_changed) }
   end
+
+  it 'rejects a second QES field when the first enters awaiting_signature before the lock' do
+    submission = QesHelpers.build_qes_submission(qes_fields_per_submitter: 2)
+    submitter = submission.submitters.first
+    first_field, second_field = Qes.template_fields(submission).select { |field| field['type'] == 'qes' }
+    first = create(:qes_session, submitter:, field_uuid: first_field['uuid'], state: 'awaiting_app')
+    sign_in(submission.template.author)
+
+    # Simulace mezery mezi předkontrolou a zámkem: A přejde do
+    # awaiting_signature přesně předtím, než B získá zámek submissionu.
+    allow_any_instance_of(Submission).to receive(:with_lock).and_wrap_original do |original, *args, &block|
+      Qes::SessionManager.transition!(first, 'app_opened')
+      Qes::SessionManager.transition!(first, 'awaiting_signature')
+      original.call(*args, &block)
+    end
+
+    expect do
+      post "/s/#{submitter.slug}/qes_sessions", params: { field_uuid: second_field['uuid'] }
+    end.not_to change(QesSession, :count)
+
+    expect(response).to have_http_status(:conflict)
+    expect(response.parsed_body['error']).to eq('signature_in_progress')
+    expect(response.parsed_body['id']).to eq(first.id)
+    expect(first.reload.state).to eq('awaiting_signature')
+  end
+
+  it 'does not block a new session on an expired awaiting_signature session' do
+    submission = QesHelpers.build_qes_submission(qes_fields_per_submitter: 2)
+    submitter = submission.submitters.first
+    first_field, second_field = Qes.template_fields(submission).select { |field| field['type'] == 'qes' }
+    expired = create(:qes_session, submitter:, field_uuid: first_field['uuid'],
+                                   state: 'awaiting_signature', expires_at: 1.minute.ago)
+    sign_in(submission.template.author)
+
+    expect do
+      post "/s/#{submitter.slug}/qes_sessions", params: { field_uuid: second_field['uuid'] }
+    end.to change(QesSession, :count).by(1)
+
+    expect(response).to have_http_status(:created)
+    expect(expired.reload.state).to eq('expired')
+  end
+
+  it 'refuses completion when the first revision base changed after preparation' do
+    submitter = QesHelpers.build_qes_submitter
+    field = submitter.submission.template_fields.find { |item| item['type'] == 'qes' }
+    session = create(:qes_session, :with_values_snapshot, submitter:, submission: submitter.submission,
+                                                    account: submitter.account, field_uuid: field['uuid'],
+                                                    state: 'awaiting_signature')
+    allow(Qes::TbsDocument).to receive(:base_digest).and_return('new')
+
+    expect do
+      Qes::Providers::MobileApp.new(session).complete!('signature')
+    end.to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:document_set_changed) }
+  end
 end

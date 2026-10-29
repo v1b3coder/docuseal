@@ -41,30 +41,37 @@ module Qes
 
       # Na jednu submission smí být připravená jen jedna podpisová revize;
       # jinak by dvě pole téhož submittera vytvořila dvě větve PDF (S3).
-      in_progress = QesSession.active.where(submission_id: @submitter.submission_id,
-                                            state: 'awaiting_signature').first
+      # Prošlá session neblokuje: v `with_lock` se rovnou ukončí.
+      in_progress = QesSession.live.where(submission_id: @submitter.submission_id,
+                                         state: 'awaiting_signature').first
       if in_progress && (in_progress.submitter_id != @submitter.id || in_progress.field_uuid != field['uuid'])
-        return render json: { error: 'signature_in_progress', id: in_progress.id,
-                             session_id: in_progress.id, state: in_progress.state,
-                             expires_at: in_progress.expires_at&.utc&.iso8601,
-                             poll_interval_ms: 2000 }, status: :conflict
+        return render_signature_in_progress(in_progress)
       end
 
       session = nil
       token = nil
 
-      # Serializuje tvorbu session; jejich stav se kontroluje pod vlastním zámkem.
+      # Serializuje tvorbu session; stav všech sessions submission se kontroluje
+      # pod zámkem. Předkontrola výše je jen rychlá cesta — mezi ní a zámkem
+      # může jiné pole přejít do `awaiting_signature`.
       @submitter.submission.with_lock do
-        QesSession.active.where(submitter_id: @submitter.id).find_each do |active|
+        conflict = nil
+
+        QesSession.active.where(submission_id: @submitter.submission_id).find_each do |active|
           active.with_lock do
-            if active.state == 'awaiting_signature' && active.field_uuid == field['uuid']
+            if stale?(active)
+              expire_stale!(active)
+            elsif active.state == 'awaiting_signature' && active.field_uuid == field['uuid']
               session = active
-            elsif active.state.in?(%w[awaiting_app app_opened])
+            elsif active.submitter_id == @submitter.id && active.state.in?(%w[awaiting_app app_opened])
               Qes::SessionManager.transition!(active, 'cancelled')
+            else
+              conflict ||= active
             end
           end
         end
 
+        session ||= conflict
         next if session
 
         session = QesSession.create!(account: @submitter.account, submission: @submitter.submission,
@@ -82,11 +89,7 @@ module Qes
 
       Qes.log(session)
 
-      if token.nil?
-        return render json: { error: 'signature_in_progress', id: session.id, session_id: session.id,
-                              state: session.state, expires_at: session.expires_at&.utc&.iso8601,
-                              poll_interval_ms: 2000 }, status: :conflict
-      end
+      return render_signature_in_progress(session) if token.nil?
 
       link = Qes::Link.call(request, '/qes/sign', token)
 
@@ -101,6 +104,10 @@ module Qes
         expires_at: session.expires_at.utc.iso8601,
         poll_interval_ms: 2000
       }, status: :created
+    rescue ActiveRecord::RecordNotUnique
+      # SQLite nemá skutečný řádkový zámek; souběh tam zachytí až unikátní
+      # index. Odpověď musí být stejná jako z předkontroly.
+      render_signature_in_progress(QesSession.active.where(submission_id: @submitter.submission_id).first)
     end
 
     def show
@@ -108,9 +115,15 @@ module Qes
 
       return render_qes_error_with(:unknown_session, :not_found) if session.nil?
 
+      # Prošlá aktivní session se hlásí jako `expired`, aby prohlížeč
+      # nečekal do timeoutu na stav, který už nikdy nepřijde. Terminální
+      # stavy (`failed`, `cancelled`) si nesou vlastní chybový kód.
+      state = session.state
+      state = 'expired' if Qes::SessionManager.active?(state) && session.expired?
+
       render json: {
         id: session.id,
-        state: session.state,
+        state:,
         value: session.state == 'completed' ? session.value_token : nil,
         error: session.failure_code.present? ? { code: session.failure_code,
                                                 message: session.failure_message } : nil,
@@ -157,6 +170,26 @@ module Qes
     def find_field
       Qes.template_field(@submitter.submission, params[:field_uuid],
                           submitter_uuid: @submitter.uuid)
+    end
+
+    def stale?(session)
+      session.expires_at.present? && session.expires_at <= Time.current
+    end
+
+    # Expirace pod zámkem: prošlá session nesmí blokovat novou. Job ji může
+    # stihnout ukončit souběžně, proto `InvalidTransition` není chyba.
+    def expire_stale!(session)
+      Qes::SessionManager.transition!(session, 'expired', failure_code: 'expired')
+    rescue Qes::InvalidTransition
+      nil
+    end
+
+    def render_signature_in_progress(session)
+      expires_at = session&.expires_at
+
+      render json: { error: 'signature_in_progress', id: session&.id, session_id: session&.id,
+                     state: session&.state, expires_at: expires_at&.utc&.iso8601,
+                     poll_interval_ms: 2000 }, status: :conflict
     end
 
     # Metadata dokončeného podpisu pro přehled v podpisovém formuláři:
