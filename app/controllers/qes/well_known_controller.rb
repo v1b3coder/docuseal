@@ -5,6 +5,8 @@ module Qes
   # AASA nemá příponu, takže statika by ho poslala jako application/octet-stream;
   # obě odpovědi proto servíruje controller s Content-Type: application/json.
   class WellKnownController < ApplicationController
+    include Qes::ControllerConcern
+
     skip_before_action :authenticate_user!
     skip_authorization_check
     # Na čerstvé instalaci (žádný User) by `maybe_redirect_to_setup` vrátil

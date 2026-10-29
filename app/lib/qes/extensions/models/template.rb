@@ -12,8 +12,10 @@ module Qes
 
         private
 
+        # `QES_ENABLED=false` je feature gate (nález #10): s vypnutým QES se naše
+        # validace nespouští, takže operátor může QES šablonu i od-QESovat.
         def qes_signing_order
-          return unless fields.any? { |field| field['type'] == 'qes' }
+          return unless Qes.enabled? && fields.any? { |field| field['type'] == 'qes' }
 
           signers = submitters.reject { |submitter| submitter['is_viewer'] }
 

@@ -58,4 +58,16 @@ RSpec.describe 'QES template validation errors', type: :request do
       post template_preferences_path(template), params: { template: { preferences: { submitters_order: '' } } }
     end.to raise_error(ActiveRecord::RecordInvalid)
   end
+
+  # Nález #10: s vypnutým QES se naše validace nespouští, takže úprava
+  # šablony nesmí skončit 500 (`TemplateErrors` výjimku znovu vyhodí).
+  it 'saves the template when QES is disabled instead of returning 500' do
+    Qes::Config[:enabled] = false
+
+    put template_path(template), params: {
+      template: { fields: fields_without_last_signer_qes, submitters: template.submitters }
+    }, as: :json
+
+    expect(response).to have_http_status(:ok)
+  end
 end

@@ -429,6 +429,12 @@ end
 RSpec.configure do |config|
   config.include QesHelpers
 
+  # `Qes::Config` override jsou proces-globální: bez resetu prosakuje
+  # `Qes::Config[:enabled] = false` z `spec/requests/qes_disabled_spec.rb` do
+  # souborů, které `QesHelpers.configure!` nevolají, a výsledek pak závisí na
+  # pořadí souborů.
+  config.after { Qes::Config.reset! }
+
   # `RateLimit::STORE` je proces-globální `MemoryStore` (ne `Rails.cache`) a SQLite po
   # rollbacku recykluje `submitter.id`, takže se počítadla z předchozích example
   # sčítají: `spec/system/signing_form_spec.rb` (2FA) pak spadne na `too_many_attempts`

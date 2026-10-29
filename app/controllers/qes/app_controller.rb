@@ -4,6 +4,8 @@ module Qes
   # Web fallback stránka `/qes/app` a `/qes/sign` (SPEC § 6.4): QR kód,
   # tlačítko pro otevření appky a odkaz na stažení. Bez citlivých dat.
   class AppController < ApplicationController
+    include Qes::ControllerConcern
+
     skip_before_action :authenticate_user!
     skip_authorization_check
     layout 'form'

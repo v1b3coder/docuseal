@@ -3,6 +3,8 @@
 # Náhled uloženého ověřeného PDF (docs/16 § 4.6). Report i dokument se čtou
 # z template; samotné ověření zůstává v API a tady se nic nepřepočítává.
 class TemplatesQesVerificationsController < ApplicationController
+  include Qes::ControllerConcern
+
   load_and_authorize_resource :template
 
   def show
