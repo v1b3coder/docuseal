@@ -2,9 +2,10 @@
 
 require 'rails_helper'
 
-# Regrese R1/R2 z docs/22-final-audit-fork.md: sdílené ověření PDF musí
+# Regrese R1/R2 z docs/22-final-audit-fork.md a #12: sdílené ověření PDF musí
 # u nedůvěryhodného podpisu dál hlásit přidaná data a CAdES musí být
-# trusted přes certy účtu (ne jen přes QES trust roots).
+# trusted přes certy účtu (ne jen přes QES trust roots), ale jen při přesné
+# shodě certu — ne klíče.
 RSpec.describe 'PDF verification parity' do
   before { QesHelpers.configure! }
 
@@ -53,6 +54,20 @@ RSpec.describe 'PDF verification parity' do
     allow(Qes).to receive(:verification_trust_roots).and_return([])
 
     signature = Qes::PdfiumTrust.report(StringIO.new(cades_pdf(pkcs:)), [pkcs.certificate]).first
+
+    expect(signature).to have_attributes(verified: true, trusted: false)
+    expect(signature.messages.map(&:text)).not_to include(I18n.t('signed_with_trusted_certificate'))
+  end
+
+  # Issue #12: account fallback musí porovnat celý cert, ne jen veřejný klíč.
+  it 'does not trust a re-issued leaf sharing the key of an account certificate' do
+    pkcs = QesHelpers.pkcs12
+    allow(Qes).to receive(:verification_trust_roots).and_return([])
+
+    reissued = QesHelpers.reissued_leaf(pkcs.certificate, key: pkcs.key, cn: '/CN=CEO Jan Novak')
+    forged = OpenSSL::PKCS12.create('test', 'test', pkcs.key, reissued)
+
+    signature = Qes::PdfiumTrust.report(StringIO.new(cades_pdf(pkcs: forged)), [pkcs.certificate]).first
 
     expect(signature).to have_attributes(verified: true, trusted: false)
     expect(signature.messages.map(&:text)).not_to include(I18n.t('signed_with_trusted_certificate'))
