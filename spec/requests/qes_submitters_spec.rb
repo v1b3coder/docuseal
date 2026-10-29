@@ -35,6 +35,23 @@ RSpec.describe 'QES API submitter completion', type: :request do
     expect(submitter.reload.completed_at).to be_nil
   end
 
+  it 'keeps an optional QES field optional through a field update' do
+    qes_fields = Qes.template_fields(submission).deep_dup
+    qes_fields.each { |item| item['required'] = false if item['type'] == 'qes' }
+    submission.update!(template_fields: qes_fields)
+    field = qes_fields.find { |item| item['type'] == 'qes' }
+
+    put "/api/submitters/#{submitter.id}",
+        params: { fields: [{ uuid: field['uuid'], required: false }] }, headers:, as: :json
+    expect(response).to have_http_status(:ok)
+    expect(submission.reload.template_fields.find { |item| item['uuid'] == field['uuid'] }['required']).to be(false)
+
+    complete_submitter
+
+    expect(response).to have_http_status(:ok)
+    expect(submitter.reload.completed_at).to be_present
+  end
+
   it 'requires a completed session for every required field' do
     create(:qes_session, :with_values_snapshot, submitter:, field_uuid: fields.first['uuid'], state: 'completed', level: 'ades')
     create(:qes_session, :with_values_snapshot, submitter:, field_uuid: fields.last['uuid'], state: 'awaiting_signature', level: 'ades')

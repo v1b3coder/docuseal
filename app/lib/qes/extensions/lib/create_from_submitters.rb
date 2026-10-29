@@ -9,8 +9,11 @@ module Qes
         end
 
         def assign_field_attrs(field, attrs)
+          # `required` QES pole je zmrazené ve snapshotu submissionu (N1);
+          # API ho nesmí změnit ani na true, ani na false.
+          snapshot_required = field['required']
           result = super
-          field['required'] = true if field['type'] == 'qes' && attrs.key?('required')
+          field['required'] = snapshot_required if field['type'] == 'qes' && attrs.key?('required')
           result
         end
       end
