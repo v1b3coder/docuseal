@@ -10,6 +10,10 @@ module Qes
     LOCK_KEY = 'qes_expire_sessions'
 
     def perform
+      # `QES_ENABLED=false` je feature gate (nález #10): naplánovaný job
+      # nesmí dál měnit stav QES sessions.
+      return unless Qes.enabled?
+
       QesSession.stale.find_each do |session|
         QesSession.stale.where(id: session.id).where.not(state: 'completed')
                   .update_all(state: 'expired', failure_code: 'expired',
@@ -26,7 +30,7 @@ module Qes
 
     def reschedule!
       interval = Qes::Config[:expiry_job_interval].to_i
-      return unless interval.positive?
+      return unless Qes.enabled? && interval.positive?
 
       # Atomický lock v cache: při souběžném startu dvou procesů naplánuje
       # smyčku jen ten, kdo klíč vytvoří (Redis/MemoryStore unless_exist).

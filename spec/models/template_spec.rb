@@ -81,4 +81,18 @@ RSpec.describe Template do
 
     expect(template.save).to be true
   end
+
+  # Nález #10: `QES_ENABLED=false` je feature gate, naše validace se
+  # nespouští — operátor tak může QES šablonu od-QESovat (dřív 500).
+  it 'skips the qes signing order validation when QES is disabled' do
+    template = build_template!(only_field_types: %w[text], submitter_count: 2)
+
+    add_qes_fields!(template, submitters: template.submitters.first(1))
+    expect(template.save).to be false
+
+    Qes::Config[:enabled] = false
+
+    expect(template.save).to be true
+    expect(template.errors[:fields]).to be_empty
+  end
 end

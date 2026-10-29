@@ -24,4 +24,15 @@ RSpec.describe Submission do
 
     expect(submission.reload.submitters_order).to eq('random')
   end
+
+  # Nález #10: s vypnutým QES platí upstream pořadí, naše `preserved`
+  # se nevynucuje.
+  it 'keeps random order when QES is disabled' do
+    template = QesHelpers.build_qes_submission(count: 2).template
+    Qes::Config[:enabled] = false
+
+    submission = create(:submission, template:, account: template.account, submitters_order: 'random')
+
+    expect(submission.reload.submitters_order).to eq('random')
+  end
 end
