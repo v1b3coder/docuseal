@@ -19,7 +19,8 @@ RSpec.describe Qes::Config do
   it 'defaults to the Czech deployment settings' do
     expect(described_class[:enabled]).to be(true)
     expect(described_class[:ltv_allowed_hosts])
-      .to eq('crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu')
+      .to eq('crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu,qcrldp1.ica.cz,' \
+             'qcrldp2.ica.cz,crldp1.ica.cz,crldp2.ica.cz')
     expect(described_class[:trust_roots]).to eq(Rails.root.join('config/qes/postsignum.pem').to_s)
     expect(File).to exist(described_class[:trust_roots])
     expect(described_class[:verification_trust_roots]).to eq(Rails.root.join('config/qes/czech.pem').to_s)

@@ -28,10 +28,12 @@ module Qes
     # Required whenever QES_TSA_URL is set, even with QES_TSA_REQUIRED=false.
     # Without TSA roots, timestamps provide no trusted historical validation time.
     #
-    # Defaults are for the Czech deployment: PostSignum CRL hosts and signing
-    # roots, Czech qualified CA roots for verification, DigiCert TSA. ENV is an
-    # override; staging/test override trust roots, require_ltv, test CRL and the
-    # allowlist.
+    # Defaults are for the Czech deployment: PostSignum and I.CA CRL hosts,
+    # PostSignum signing roots, Czech qualified CA roots for verification,
+    # DigiCert TSA. ENV is an override; staging/test override trust roots,
+    # require_ltv, test CRL and the allowlist. I.CA hosts are in the allowlist
+    # because its CRL DPs are http-only (https on qcrldp1.ica.cz does not answer);
+    # signing with an I.CA certificate still needs its roots in QES_TRUST_ROOTS.
     #
     # `trust_roots` is the signing trust store (which certificates may sign in
     # this DocuSeal); `verification_trust_roots` is the broader verification
@@ -57,7 +59,8 @@ module Qes
       tsa_trust_roots: File.join(CONFIG_DIR, 'digicert-tsa.pem'),
       tsa_required: true,
       require_ltv: true,
-      ltv_allowed_hosts: 'crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu',
+      ltv_allowed_hosts: 'crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu,' \
+                         'qcrldp1.ica.cz,qcrldp2.ica.cz,crldp1.ica.cz,crldp2.ica.cz',
       android_cert_sha256: nil,
       test_crl_path: nil,
       ios_team_id: nil,
