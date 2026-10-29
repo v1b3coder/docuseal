@@ -124,4 +124,13 @@ RSpec.describe QesSession do
     expect(session.failure_code).to eq('expired')
     expect(Qes::Token.find(token)).to eq(session)
   end
+
+  it 'allows only one active session per submission' do
+    first = create(:qes_session, state: 'awaiting_app')
+
+    expect do
+      create(:qes_session, submitter: first.submitter, submission: first.submission,
+                           field_uuid: first.field_uuid, state: 'awaiting_app')
+    end.to raise_error(ActiveRecord::RecordNotUnique)
+  end
 end

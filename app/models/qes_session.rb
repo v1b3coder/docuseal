@@ -68,6 +68,9 @@ class QesSession < ApplicationRecord
   scope :active, -> { where(state: Qes::SessionManager::ACTIVE_STATES) }
   scope :completed, -> { where(state: 'completed') }
   scope :stale, -> { active.where(expires_at: ..Time.current) }
+  # Prošlá session už nesmí blokovat novou (S3). `active` zůstává bez filtru,
+  # protože `stale` na něm stojí a musí prošlé session vidět.
+  scope :live, -> { active.where(expires_at: Time.current..) }
 
   validate :field_uuid_must_be_qes_field
 

@@ -200,12 +200,13 @@ module Qes
 
         # Dlouhé síťové operace (CRL fetch, TSA, PDF) mimo `with_lock`; transakce
         # pak drží jen zápis stavu a dokumentů (M20).
+        # U první revize je `qes_base_digest` nil; kdyby mezitím dokončila jiná
+        # revize, `base_digest` už nil nebude a podpis by vznikl nad starým
+        # základem (S3). Proto se porovnává i nil.
         stored_base = session.tbs_document&.blob&.metadata&.fetch('qes_base_digest', nil)
-        if stored_base.present? && session.respond_to?(:submitter)
-          current_base = Qes::TbsDocument.base_digest(session.submitter)
-          if current_base != stored_base
-            raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
-          end
+        if session.respond_to?(:submitter) &&
+           Qes::TbsDocument.base_digest(session.submitter) != stored_base
+          raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
         end
 
         Qes::CmsBuilder.verify_signature!(session.certificate, signature,
