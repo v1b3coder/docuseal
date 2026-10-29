@@ -46,4 +46,16 @@ RSpec.describe 'QES template validation errors', type: :request do
     expect(response.body).to include(I18n.t('qes.error.qes_signing_order_required'))
     expect(template.reload.preferences['submitters_order']).to eq('preserved')
   end
+
+  # Nález #5: hook nesmí převést RecordInvalid z jiného záznamu na QES 422.
+  it 're-raises RecordInvalid from a record other than the template' do
+    template # materializovat před stubem, helper sám volá save!
+
+    allow_any_instance_of(Template).to receive(:save!)
+      .and_raise(ActiveRecord::RecordInvalid.new(Submitter.new))
+
+    expect do
+      post template_preferences_path(template), params: { template: { preferences: { submitters_order: '' } } }
+    end.to raise_error(ActiveRecord::RecordInvalid)
+  end
 end
