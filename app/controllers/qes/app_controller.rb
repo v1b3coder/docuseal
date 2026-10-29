@@ -12,7 +12,7 @@ module Qes
       @token = params[:token].to_s
       @session = Qes::Token.find(@token)
       @universal_link = Qes::Link.call(request, '/qes/sign', @token)
-      @custom_scheme_link = "#{Qes::Config[:deep_link_base]}?token=#{CGI.escape(@token)}"
+      @custom_scheme_link = Qes::Link.custom_scheme(request, @token)
       @fallback_url = Qes::Link.call(request, '/qes/app', @token)
       @document_name = @session&.submission&.name.presence || @session&.submission&.template&.name
       @signer_name = @session&.submitter&.name

@@ -97,7 +97,7 @@ module Qes
         universal_link: link,
         qr_svg: RQRCode::QRCode.new(link, level: :m).as_svg(viewbox: true, svg_attributes: { width: 220, height: 220 }),
         fallback_url: Qes::Link.call(request, '/qes/app', token),
-        custom_scheme_link: "#{Qes::Config[:deep_link_base]}?token=#{CGI.escape(token)}",
+        custom_scheme_link: Qes::Link.custom_scheme(request, token),
         expires_at: session.expires_at.utc.iso8601,
         poll_interval_ms: 2000
       }, status: :created

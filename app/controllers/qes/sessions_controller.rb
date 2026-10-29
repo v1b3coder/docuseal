@@ -223,7 +223,7 @@ module Qes
         level_required: @session.level_required,
         submitter_id: @session.submitter_id,
         requires_certificate: @session.state.in?(%w[awaiting_app app_opened]),
-        server_url: Qes::Config[:public_base_url].presence || Docuseal.default_url_options[:host],
+        server_url: Qes::Link.origin(request),
         expires_at: @session.expires_at&.utc&.iso8601,
         values: Qes::ValueValidator.non_qes_values(@session.submitter.values, @session.submitter)
       }
