@@ -30,12 +30,6 @@ RSpec.describe 'QES disabled hooks', type: :request do
     expect(response).to have_http_status(:not_found)
   end
 
-  it 'returns 404 for app links' do
-    get '/.well-known/assetlinks.json'
-
-    expect(response).to have_http_status(:not_found)
-  end
-
   it 'returns 404 for the test CRL' do
     Qes::Config[:test_crl_path] = Rails.root.join('config/qes/test-root.crl').to_s
 

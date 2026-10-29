@@ -61,7 +61,6 @@ module Qes
       require_ltv: true,
       ltv_allowed_hosts: 'crl.postsignum.cz,crl2.postsignum.cz,crl.postsignum.eu,' \
                          'qcrldp1.ica.cz,qcrldp2.ica.cz,crldp1.ica.cz,crldp2.ica.cz',
-      android_cert_sha256: nil,
       test_crl_path: nil,
       ios_team_id: nil,
       expiry_job_interval: 60,

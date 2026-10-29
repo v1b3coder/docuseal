@@ -92,15 +92,20 @@ module Qes
       return render_signature_in_progress(session) if token.nil?
 
       link = Qes::Link.call(request, '/qes/sign', token)
+      custom_scheme_link = Qes::Link.custom_scheme(request, token)
 
       render json: {
         id: session.id,
         state: session.state,
         token:,
         universal_link: link,
-        qr_svg: RQRCode::QRCode.new(link, level: :m).as_svg(viewbox: true, svg_attributes: { width: 220, height: 220 }),
+        # Android App Links zrušeny (#18.1) — QR míří na custom scheme, appku
+        # vybírá systémový chooser.
+        qr_svg: RQRCode::QRCode.new(custom_scheme_link, level: :m).as_svg(
+          viewbox: true, svg_attributes: { width: 220, height: 220 }
+        ),
         fallback_url: Qes::Link.call(request, '/qes/app', token),
-        custom_scheme_link: Qes::Link.custom_scheme(request, token),
+        custom_scheme_link:,
         expires_at: session.expires_at.utc.iso8601,
         poll_interval_ms: 2000
       }, status: :created
