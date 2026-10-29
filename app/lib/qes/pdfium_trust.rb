@@ -35,9 +35,16 @@ module Qes
           # Když není žádný důvěryhodný podpis, bereme ověřené (stejně jako
           # upstream): jinak by se přidaná data za nedůvěryhodným podpisem
           # nehlásila jako neoprávněná změna (R1).
+          #
+          # Po odfiltrování razítek nesmí zbýt `nil`: když je přijaté jen DocTS,
+          # počítá se hranice od posledního přijatého záznamu (razítko má
+          # `signed_end` za podpisem), jinak od posledního ověřeného podpisu
+          # (issue #11).
           boundary = accepted.presence || (trusted_ranges.blank? ? verified : [])
           last_signature = boundary.reject { |signature| signature.sub_filter == 'ETSI.RFC3161' }
-                                     .max_by(&:signed_end)
+                                     .max_by(&:signed_end) ||
+                            boundary.max_by(&:signed_end) ||
+                            verified.max_by(&:signed_end)
           timestamp_ranges = (accepted & trusted_timestamps).map(&:byte_range)
           modified = last_signature && unsigned_changes?(io, last_signature.signed_end,
                                                           allow_dss_changes:, timestamp_ranges:)

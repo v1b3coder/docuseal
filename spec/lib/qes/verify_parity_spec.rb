@@ -70,4 +70,49 @@ RSpec.describe 'PDF verification parity' do
 
     expect(signature).to have_attributes(verified: true, trusted: true, modified: false)
   end
+
+  # Issue #11: přijaté je jen DocTS, takže `last_signature` nesmí zůstat nil.
+  describe 'change boundary when only a timestamp is accepted' do
+    def trusted_doc_ts(pdf)
+      allow(Qes).to receive(:tsa_trust_roots).and_return([QesHelpers.tsa_root_certificate])
+
+      QesHelpers.append_timestamp(pdf, certificate: QesHelpers.tsa_certificate)
+    end
+
+    it 'reports unsigned changes after a trusted DocTS of an untrusted signature' do
+      stamped = trusted_doc_ts(cades_pdf(pkcs: QesHelpers.self_signed_pkcs12))
+      pdf = "#{stamped}\n% injected after DocTS\n"
+
+      expect(Qes::PdfiumTrust.report(StringIO.new(pdf), []).any?(&:modified)).to be true
+      expect(Qes::Verifier.call(pdf, name: 'tampered.pdf'))
+        .to include(modified: true, verdict: 'invalid')
+      expect(Qes::PdfiumTrust.report(StringIO.new(stamped), []).any?(&:modified)).to be false
+    end
+
+    it 'reports an untrusted signature appended after a trusted DocTS' do
+      submitter = QesHelpers.build_qes_submitter
+      stamped = trusted_doc_ts(QesHelpers.signed_pdf(pkcs: QesHelpers.self_signed_pkcs12,
+                                                     submitter:))
+      sealed, state = Qes::Seal.apply(stamped, submitter.account, submitter:,
+                                     pkcs: QesHelpers.self_signed_pkcs12)
+      expect(state).to eq('applied')
+
+      signatures = Qes::PdfiumTrust.report(StringIO.new(sealed), [])
+
+      expect(signatures.any?(&:modified)).to be true
+      expect(signatures.map(&:trusted)).to include(false)
+    end
+
+    it 'reports unsigned changes after a trusted DocTS without any signature' do
+      document = HexaPDF::Document.new
+      document.pages.add
+      io = StringIO.new
+      document.write(io)
+      stamped = trusted_doc_ts(io.string)
+
+      expect(Qes::PdfiumTrust.report(StringIO.new("#{stamped}\n% injected\n"), []).any?(&:modified))
+        .to be true
+      expect(Qes::PdfiumTrust.report(StringIO.new(stamped), []).any?(&:modified)).to be false
+    end
+  end
 end
