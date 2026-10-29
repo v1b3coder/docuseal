@@ -52,6 +52,8 @@ en:
       certificate_serial: Certificate serial number
       level: Level
       key_location: Key location
+      app_platform: Signing application platform
+      app_version: Signing application version
       signed_at: Signed at
       signing_time: Signing time
       completed_at: Completed
@@ -165,6 +167,8 @@ cs:
       certificate_serial: Sériové číslo certifikátu
       level: Úroveň
       key_location: Umístění klíče
+      app_platform: Platforma podepisující aplikace
+      app_version: Verze podepisující aplikace
       signed_at: Podepsáno
       signing_time: Čas podpisu
       completed_at: Dokončeno

@@ -408,7 +408,7 @@ RSpec.describe 'Qes sessions API', type: :request do
       certificate: Base64.strict_encode64(pkcs.certificate.to_der),
       chain: (pkcs.ca_certs || []).map { |cert| Base64.strict_encode64(cert.to_der) },
       key_location: 'phone_keystore',
-      app: { platform: 'rspec', version: '1.0.0' }
+      app: { platform: 'android', version: '1.3.9' }
     }
 
     expect(response).to have_http_status(:ok)
@@ -424,6 +424,35 @@ RSpec.describe 'Qes sessions API', type: :request do
     expect(response.parsed_body['level']).to eq('ades')
     expect(session.reload.state).to eq('completed')
     expect(session.signed_document).to be_attached
+    expect(session.app_metadata).to eq({ 'platform' => 'android', 'version' => '1.3.9' })
+  end
+
+  it 'keeps only a known platform and a well formed app version from self-reported metadata' do
+    session, _submitter = create_qes_session(token: 'app-metadata')
+    allow(Qes::Ltv).to receive(:fetch_first_crl).and_return(QesHelpers.crl)
+
+    post '/qes/sessions/app-metadata/certificate', params: {
+      certificate: Base64.strict_encode64(pkcs.certificate.to_der),
+      chain: [],
+      app: { platform: 'Android', version: '1.3.9', reader: 'moi-sdk', container_ref: 'abc' }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.app_metadata).to eq({ 'platform' => 'android', 'version' => '1.3.9' })
+  end
+
+  it 'drops an unknown platform and a malformed app version from self-reported metadata' do
+    session, _submitter = create_qes_session(token: 'app-metadata-bad')
+    allow(Qes::Ltv).to receive(:fetch_first_crl).and_return(QesHelpers.crl)
+
+    post '/qes/sessions/app-metadata-bad/certificate', params: {
+      certificate: Base64.strict_encode64(pkcs.certificate.to_der),
+      chain: [],
+      app: { platform: 'windows', version: "1.0.\u0000<script>", reader: 'x', container_ref: 'y' }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.app_metadata).to be_nil
   end
 
   it 'does not complete when a timestamp is required but the TSA URL is missing' do

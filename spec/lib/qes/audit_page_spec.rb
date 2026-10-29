@@ -38,4 +38,24 @@ RSpec.describe Qes::AuditPage do
                               'Zdroj času validace' => 'Aktuální čas')
     end
   end
+
+  it 'adds the self-reported application platform and version to the audit page' do
+    session = create(:qes_session, app_metadata: { 'platform' => 'android', 'version' => '1.3.9' })
+
+    I18n.with_locale(:cs) do
+      rows = described_class.rows_for(session).to_h
+      expect(rows).to include('Platforma podepisující aplikace' => 'android',
+                              'Verze podepisující aplikace' => '1.3.9')
+    end
+  end
+
+  it 'omits application metadata for a session without it' do
+    session = create(:qes_session, app_metadata: nil)
+
+    I18n.with_locale(:cs) do
+      rows = described_class.rows_for(session).to_h
+      expect(rows).not_to have_key('Platforma podepisující aplikace')
+      expect(rows).not_to have_key('Verze podepisující aplikace')
+    end
+  end
 end

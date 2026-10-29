@@ -84,7 +84,7 @@ module Qes
       crls = Qes::Ltv.fetch_crls(certificate_der, chain:)
 
       provider.data_to_sign(certificate_der, chain:, key_location:,
-                                            app_metadata: params[:app].presence,
+                                            app_metadata: app_metadata_param,
                                             crls: crls || [])
       @session.update!(expires_at: Time.current + Qes::Config[:session_ttl].to_i.seconds)
 
@@ -191,6 +191,26 @@ module Qes
 
     def provider_for(session)
       Qes::Providers::MobileApp.new(session)
+    end
+
+    # `app` je self-reported metadata z appky (SPEC § 5.4): do auditní stránky
+    # jdou jen platforma a reálná verze. Cokoli jiného se zahodí, protože text
+    # končí v PDF a nesmí tam projít libovolný řetězec z klienta.
+    APP_PLATFORMS = %w[android ios].freeze
+    APP_VERSION = /\A[0-9A-Za-z][0-9A-Za-z._+-]{0,31}\z/
+
+    def app_metadata_param
+      app = params[:app]
+      return nil unless app.respond_to?(:permit)
+
+      permitted = app.permit(:platform, :version)
+      platform = permitted[:platform].to_s.downcase
+      version = permitted[:version].to_s.strip
+      metadata = {}
+      metadata['platform'] = platform if APP_PLATFORMS.include?(platform)
+      metadata['version'] = version if version.match?(APP_VERSION)
+
+      metadata.presence
     end
 
     def same_certificate?(certificate_der)
