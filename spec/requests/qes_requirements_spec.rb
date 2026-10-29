@@ -97,4 +97,82 @@ RSpec.describe 'QES completion requirements', type: :request do
     expect(response.parsed_body['field_uuid']).to eq(text['uuid'])
     expect(submitter.reload.completed_at).to be_nil
   end
+
+  # #16: úroveň a povinnost QES pole jsou zmrazené ve snapshotu submissionu;
+  # API je nesmí změnit a čtou se ze submissionu, ne z šablony.
+  it 'ignores a QES level change on an in-flight submission' do
+    submission = QesHelpers.build_qes_submission(level: 'qes')
+    submitter = submission.submitters.first
+    field = submission.template_fields.find { |item| item['type'] == 'qes' }
+
+    put "/api/submitters/#{submitter.id}", headers: auth_headers(submission.template), as: :json,
+                                           params: { fields: [{ uuid: field['uuid'], preferences: { level: 'ades' } }] }
+
+    expect(response).to have_http_status(:ok)
+
+    frozen = Qes.template_fields(submission.reload).find { |item| item['type'] == 'qes' }
+    expect(frozen.dig('preferences', 'level')).to eq('qes')
+
+    create(:qes_session, :with_values_snapshot, submitter:, submission:, account: submitter.account,
+                                                field_uuid: field['uuid'], state: 'completed', level: 'ades')
+
+    put "/api/submitters/#{submitter.id}", headers: auth_headers(submission.template), as: :json,
+                                           params: { completed: true }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(response.parsed_body['error']).to eq('Required QES signatures are missing')
+  end
+
+  it 'freezes QES field requirements when the API creates a submission' do
+    template = QesHelpers.build_qes_submission(level: 'qes').template
+
+    post "/api/templates/#{template.id}/submissions", headers: auth_headers(template), as: :json, params: {
+      send_email: false,
+      submitters: [{ email: 'signer@example.test', role: template.submitters.first['name'] }]
+    }
+
+    expect(response).to have_http_status(:ok)
+
+    submission = Submission.order(:id).last
+    frozen = submission.template_fields.find { |item| item['type'] == 'qes' }
+
+    expect(frozen).to be_present
+    expect(frozen['required']).to be(true)
+    expect(frozen.dig('preferences', 'level')).to eq('qes')
+  end
+
+  it 'ignores a QES level passed with the API submission' do
+    template = QesHelpers.build_qes_submission(level: 'qes').template
+    field = template.fields.find { |item| item['type'] == 'qes' }
+
+    post "/api/templates/#{template.id}/submissions", headers: auth_headers(template), as: :json, params: {
+      send_email: false,
+      submitters: [{ email: 'signer@example.test', role: template.submitters.first['name'],
+                     fields: [{ uuid: field['uuid'], preferences: { level: 'ades' } }] }]
+    }
+
+    expect(response).to have_http_status(:ok)
+
+    frozen = Qes.template_fields(Submission.order(:id).last).find { |item| item['type'] == 'qes' }
+    expect(frozen.dig('preferences', 'level')).to eq('qes')
+  end
+
+  it 'keeps the QES level of an in-flight submission when the template changes' do
+    template = QesHelpers.build_qes_submission(level: 'qes').template
+
+    post "/api/templates/#{template.id}/submissions", headers: auth_headers(template), as: :json, params: {
+      send_email: false,
+      submitters: [{ email: 'signer@example.test', role: template.submitters.first['name'] }]
+    }
+    submission = Submission.order(:id).last
+
+    template.update!(fields: template.fields.map do |field|
+      next field unless field['type'] == 'qes'
+
+      field.merge('preferences' => field['preferences'].merge('level' => 'ades'))
+    end)
+
+    frozen = Qes.template_fields(submission.reload).find { |item| item['type'] == 'qes' }
+    expect(frozen.dig('preferences', 'level')).to eq('qes')
+  end
 end
