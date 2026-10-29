@@ -23,7 +23,6 @@ Rails.application.routes.prepend do
   end
 
   get '.well-known/apple-app-site-association', to: 'qes/well_known#apple_app_site_association'
-  get '.well-known/assetlinks.json', to: 'qes/well_known#assetlinks'
   get 'qes-test/root.crl', to: 'qes/test_crl#show'
 
   get 'templates/:template_id/qes_verification', to: 'templates_qes_verifications#show',

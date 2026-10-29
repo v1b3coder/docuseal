@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Qes
-  # Web fallback stránka `/qes/app` a `/qes/sign` (SPEC § 6.4): QR kód,
-  # tlačítko pro otevření appky a odkaz na stažení. Bez citlivých dat.
+  # Web fallback stránka `/qes/app` a `/qes/sign` (SPEC § 6.4): QR kód
+  # s custom scheme a tlačítko pro otevření appky. Bez citlivých dat.
   class AppController < ApplicationController
     include Qes::ControllerConcern
 
@@ -13,13 +13,13 @@ module Qes
     def show
       @token = params[:token].to_s
       @session = Qes::Token.find(@token)
-      @universal_link = Qes::Link.call(request, '/qes/sign', @token)
       @custom_scheme_link = Qes::Link.custom_scheme(request, @token)
-      @fallback_url = Qes::Link.call(request, '/qes/app', @token)
       @document_name = @session&.submission&.name.presence || @session&.submission&.template&.name
       @signer_name = @session&.submitter&.name
       @expires_at = @session&.expires_at
-      @qr_svg = RQRCode::QRCode.new(@universal_link, level: :m).as_svg(viewbox: true)
+      # Android App Links zrušeny (#18.1): QR i tlačítko míří na custom scheme,
+      # takže appku vybírá systémový chooser.
+      @qr_svg = RQRCode::QRCode.new(@custom_scheme_link, level: :m).as_svg(viewbox: true)
     end
   end
 end

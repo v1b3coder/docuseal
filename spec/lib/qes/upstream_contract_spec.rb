@@ -166,9 +166,12 @@ RSpec.describe 'Upstream contracts used by the QES fork' do
         controller: 'qes/sessions', action: 'certificate'
       )
       expect(routes.recognize_path('/qes/sign', method: :get)).to include(controller: 'qes/app')
-      expect(routes.recognize_path('/.well-known/assetlinks.json', method: :get)).to include(
+      expect(routes.recognize_path('/.well-known/apple-app-site-association', method: :get)).to include(
         controller: 'qes/well_known'
       )
+      # Android App Links zrušeny (#18.1) — odkaz jde přes custom scheme.
+      expect { routes.recognize_path('/.well-known/assetlinks.json', method: :get) }
+        .to raise_error(ActionController::RoutingError)
       expect(routes.recognize_path('/api/qes/verify', method: :post)).to include(
         controller: 'api/qes_verifications', action: 'create'
       )

@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
 module Qes
-  # `.well-known` soubory pro App Links / Universal Links (SPEC § 6.6).
+  # `.well-known/apple-app-site-association` pro iOS Universal Links (SPEC § 6.6).
   # AASA nemá příponu, takže statika by ho poslala jako application/octet-stream;
-  # obě odpovědi proto servíruje controller s Content-Type: application/json.
+  # proto ho servíruje controller s Content-Type: application/json.
+  #
+  # Android App Links tu záměrně nejsou: `assetlinks.json` váže odkaz na podpis
+  # konkrétního APK a host je zapečený v buildu, takže pro self-hosted instanci
+  # nemá smysl. Android jde přes custom scheme `dokulachtan://sign` a systémový
+  # chooser — výběr aplikace necháváme na uživateli (docs/24, #18.1).
   class WellKnownController < ApplicationController
     include Qes::ControllerConcern
 
     skip_before_action :authenticate_user!
     skip_authorization_check
     # Na čerstvé instalaci (žádný User) by `maybe_redirect_to_setup` vrátil
-    # 302 na /setup a Android App Links verifikace by selhala (SPEC § 6.6).
+    # 302 na /setup a iOS Universal Links verifikace by selhala (SPEC § 6.6).
     skip_before_action :maybe_redirect_to_setup
 
     def apple_app_site_association
@@ -23,21 +28,6 @@ module Qes
           ]
         }
       }
-    end
-
-    def assetlinks
-      fingerprint = Qes::Config[:android_cert_sha256].to_s
-
-      render json: [
-        {
-          relation: ['delegate_permission/common.handle_all_urls'],
-          target: {
-            namespace: 'android_app',
-            package_name: 'cz.dokulachtan.signer',
-            sha256_cert_fingerprints: [fingerprint]
-          }
-        }
-      ]
     end
   end
 end
