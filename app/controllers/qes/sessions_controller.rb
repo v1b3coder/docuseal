@@ -112,6 +112,9 @@ module Qes
       end
 
       return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'awaiting_signature'
+      # Archivace/expirace během obřadu: podpis se nesmí vložit do mrtvého dokumentu
+      # (nová revize by zůstala bez dokončení). Guard je před modifikací PDF.
+      return if reject_inactive_submission(@session.submission)
 
       # Synchronně v requestu (lokální CRL/TSA) — appka dostane rovnou `completed`;
       # `complete!` je idempotentní (`with_lock` + stav), takže není potřeba job.
@@ -137,6 +140,8 @@ module Qes
       return render_qes_error_with(:used_token, :gone) if @session.terminal? && @session.state != 'completed'
       return render_qes_error_with(:expired_token, :gone) if @session.expired?
       return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'completed'
+      # Podpis už je v PDF; dokončit ho smí jen u aktivní submission (#14).
+      return if reject_inactive_submission(@session.submission)
 
       submitter = @session.submitter
       Submitters::SubmitValues.call(submitter, ActionController::Parameters.new(completed: 'true'), request) unless submitter.completed_at?

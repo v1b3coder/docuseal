@@ -3,6 +3,7 @@
 export const ERROR_KEYS = {
   expired_token: 'qes_error_expired_token',
   used_token: 'qes_error_used_token',
+  form_not_active: 'qes_error_form_not_active',
   unknown_token: 'qes_error_expired_token',
   signature_invalid: 'qes_error_signature_invalid',
   qes_required_qscd: 'qes_error_qes_required_qscd',

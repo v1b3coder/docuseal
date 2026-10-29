@@ -44,6 +44,33 @@ RSpec.describe 'Qes sessions API', type: :request do
     expect(response.parsed_body['qr_svg']).to include('<svg')
   end
 
+  # #14: session token nesmí přežít archivaci šablony ani expiraci submissionu.
+  it 'rejects a session for an archived template' do
+    submitter = QesHelpers.build_qes_submitter
+    field = Qes.template_fields(submitter.submission).find { |f| f['type'] == 'qes' }
+    submitter.submission.template.update!(archived_at: Time.current)
+
+    expect do
+      post "/s/#{submitter.slug}/qes_sessions", params: { field_uuid: field['uuid'] }
+    end.not_to change(QesSession, :count)
+
+    expect(response).to have_http_status(:gone)
+    expect(response.parsed_body['error']).to eq('form_not_active')
+  end
+
+  it 'rejects a session for an expired submission' do
+    submitter = QesHelpers.build_qes_submitter
+    field = Qes.template_fields(submitter.submission).find { |f| f['type'] == 'qes' }
+    submitter.submission.update!(expire_at: 1.minute.ago)
+
+    expect do
+      post "/s/#{submitter.slug}/qes_sessions", params: { field_uuid: field['uuid'] }
+    end.not_to change(QesSession, :count)
+
+    expect(response).to have_http_status(:gone)
+    expect(response.parsed_body['error']).to eq('form_not_active')
+  end
+
   it 'returns 404 for an unknown token' do
     get '/qes/sessions/unknown'
 
@@ -425,6 +452,29 @@ RSpec.describe 'Qes sessions API', type: :request do
     expect(session.reload.state).to eq('completed')
     expect(session.signed_document).to be_attached
     expect(session.app_metadata).to eq({ 'platform' => 'android', 'version' => '1.3.9' })
+  end
+
+  # #14: archivace během obřadu nesmí vložit podpis do mrtvého dokumentu.
+  it 'rejects the signature when the submission was archived during the ceremony' do
+    allow(Qes::Ltv).to receive(:fetch_first_crl).and_return(QesHelpers.crl)
+    session, submitter = create_qes_session(token: 'archived')
+
+    post '/qes/sessions/archived/certificate', params: {
+      certificate: Base64.strict_encode64(pkcs.certificate.to_der),
+      chain: (pkcs.ca_certs || []).map { |cert| Base64.strict_encode64(cert.to_der) },
+      key_location: 'phone_keystore'
+    }
+    expect(response).to have_http_status(:ok)
+
+    submitter.submission.update!(archived_at: Time.current)
+
+    signature = pkcs.key.sign(OpenSSL::Digest.new('SHA256'), session.reload.signed_attrs_der)
+    post '/qes/sessions/archived/complete', params: { signature: Base64.strict_encode64(signature) }
+
+    expect(response).to have_http_status(:gone)
+    expect(response.parsed_body['error']).to eq('form_not_active')
+    expect(session.reload.state).to eq('awaiting_signature')
+    expect(session.signed_document).not_to be_attached
   end
 
   it 'keeps only a known platform and a well formed app version from self-reported metadata' do
