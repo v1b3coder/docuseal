@@ -65,6 +65,19 @@ RSpec.describe Qes::Validator do
     expect(described_class.trusted_chain?(leaf, [int_cert], [])).to be false
   end
 
+  it 'does not trust a leaf issued by a CA outside the anchor set' do
+    root_key, root = make_ca('/C=CZ/O=QES/CN=Root', nil, nil)
+    qca_key, qca = make_ca('/C=CZ/O=QES/CN=Qualified CA', root, root_key)
+    rca_key, rca = make_ca('/C=CZ/O=QES/CN=Commercial CA', root, root_key)
+    _good_key, good = make_leaf(qca, qca_key)
+    _bad_key, bad = make_leaf(rca, rca_key)
+
+    # Anchory jsou vydávající CA (verification bundle bez rootů); root by
+    # důvěřoval celému podstromu, proto v seznamu anchorů není.
+    expect(described_class.trusted_chain?(good, [qca], [qca])).to be true
+    expect(described_class.trusted_chain?(bad, [rca], [qca])).to be false
+  end
+
   it 'trusts a signing certificate with clientAuth instead of emailProtection' do
     root_key, root = make_ca('/CN=Signing Root', nil, nil)
     key, leaf = make_leaf(root, root_key, eku: 'clientAuth')

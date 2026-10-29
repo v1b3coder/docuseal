@@ -204,7 +204,7 @@ module Qes
       false
     end
 
-    # Ověří, že certifikát podepisujícího vede řetězem k některému z trust rootů
+    # Ověří, že certifikát podepisujícího vede řetězem k některému z trust anchorů
     # (SPEC § 5.2 a § 7.5). Bez toho by šel jako QES zapsat i self-signed certifikát.
     def verify_chain!(certificate, chain, trust_roots)
       if trust_roots.blank?
@@ -216,9 +216,12 @@ module Qes
       raise ClientError.new(:not_trusted, 'Certificate chain does not lead to a trusted root')
     end
 
-    # Důvěryhodnost vůči trust rootům. Do store se musí přidat i intermediate
+    # Důvěryhodnost vůči trust anchorům. Do store se musí přidat i intermediate
     # certifikáty z CMS — bez nich OpenSSL řetěz nepostaví a reálné kvalifikované
     # certifikáty (I.CA/PostSignum) by vycházely jako nedůvěryhodné.
+    # Anchory jsou vydávající CA (TSL service digital identity), ne rooty: root
+    # jako anchor by důvěřoval celému podstromu, tj. i CA, které v TSL nejsou.
+    # PARTIAL_CHAIN ukončí řetěz na anchoru, i když není self-signed.
     # Vrací i řetěz, který store skutečně postavil; revokace se pak kontroluje
     # nad ním, ne jen nad certy od klienta (S2).
     def verified_chain(certificate, chain, trust_roots, at: Time.current)
@@ -226,6 +229,7 @@ module Qes
 
       store = OpenSSL::X509::Store.new
       store.purpose = OpenSSL::X509::PURPOSE_ANY
+      store.flags = OpenSSL::X509::V_FLAG_PARTIAL_CHAIN
       store.time = at
       trust_roots.each { |cert| store.add_cert(cert) }
 
