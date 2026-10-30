@@ -43,9 +43,7 @@ module Qes
       provider_for(@session).prepare_document unless @session.tbs_document.attached?
       return render_qes_error_with(:document_missing, :conflict) unless @session.tbs_document.attached?
 
-      @session.update!(
-        expires_at: [@session.expires_at, Time.current + Qes::Config[:review_ttl].to_i.seconds].compact.max
-      )
+      extend_expiry!(Qes::Config[:review_ttl])
 
       response.set_header('Cache-Control', 'no-store')
       send_data @session.tbs_document.download, type: 'application/pdf', disposition: 'inline',
@@ -66,7 +64,7 @@ module Qes
       if @session.state == 'awaiting_signature'
         return render_qes_error_with(:wrong_state, :conflict) unless same_certificate?(certificate_der)
 
-        @session.update!(expires_at: Time.current + Qes::Config[:session_ttl].to_i.seconds)
+        extend_expiry!(Qes::Config[:session_ttl])
         return render json: certificate_payload
       end
 
@@ -87,7 +85,7 @@ module Qes
       provider.data_to_sign(certificate_der, chain:, key_location:,
                                             app_metadata: app_metadata_param,
                                             crls: crls || [])
-      @session.update!(expires_at: Time.current + Qes::Config[:session_ttl].to_i.seconds)
+      extend_expiry!(Qes::Config[:session_ttl])
 
       Qes.log(@session)
 
@@ -217,6 +215,14 @@ module Qes
       metadata['version'] = version if version.match?(APP_VERSION)
 
       metadata.presence
+    end
+
+    # Absolutní strop (SPEC § 5.1a): prodloužení nesmí přelézt `created_at + QES_SESSION_MAX_TTL`,
+    # jinak klient s tokenem drží session naživo libovolně dlouho (#23.4).
+    def extend_expiry!(ttl)
+      cap = @session.created_at + Qes::Config[:session_max_ttl].to_i.seconds
+
+      @session.update!(expires_at: [Time.current + ttl.to_i.seconds, cap].min)
     end
 
     def same_certificate?(certificate_der)

@@ -50,7 +50,9 @@ RSpec.describe 'QES token document endpoint', type: :request do
 
       post '/qes/sessions/document/certificate', params: certificate_params
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body).to eq(payload)
+      # `expires_at` se posouvá s každým requestem, takže idempotence se
+      # porovnává bez něj; zbytek payloadu musí zůstat stejný.
+      expect(response.parsed_body.except('expires_at')).to eq(payload.except('expires_at'))
     end
   end
 
@@ -87,6 +89,33 @@ RSpec.describe 'QES token document endpoint', type: :request do
     post '/qes/sessions/document/certificate', params: certificate_params
     expect(response).to have_http_status(:ok)
     expect(session.reload.expires_at).to be > 5.minutes.from_now
+  end
+
+  it 'caps the review TTL at the absolute session lifetime' do
+    session.update!(created_at: 55.minutes.ago, expires_at: 1.minute.from_now)
+
+    get '/qes/sessions/document/document'
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.expires_at).to be_within(1).of(session.created_at + 1.hour)
+  end
+
+  it 'caps the signature TTL at the absolute session lifetime' do
+    session.update!(created_at: 55.minutes.ago, expires_at: 1.minute.from_now)
+
+    post '/qes/sessions/document/certificate', params: certificate_params
+
+    expect(response).to have_http_status(:ok)
+    expect(session.reload.expires_at).to be_within(1).of(session.created_at + 1.hour)
+  end
+
+  it 'rejects a request after the absolute session lifetime' do
+    session.update!(created_at: 2.hours.ago, expires_at: 10.minutes.from_now)
+
+    get '/qes/sessions/document/document'
+
+    expect(response).to have_http_status(:gone)
+    expect(response.parsed_body['error']).to eq('expired_token')
   end
 
   it 'serves the unsigned TBS before the certificate and does not rebuild it on certificate' do

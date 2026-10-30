@@ -45,6 +45,8 @@ module Qes
       enabled: true,
       session_ttl: 600,
       review_ttl: 900,
+      # Absolutní strop od `created_at` (#23.4); musí být větší než session_ttl + review_ttl.
+      session_max_ttl: 3600,
       pdf_max_bytes: 25.megabytes,
       signature_size: 20_000,
       signature_min_size: 20_000,
