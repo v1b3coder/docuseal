@@ -40,4 +40,25 @@ RSpec.describe Qes::Stamp do
       expect(after).not_to eq(before) if width > 1
     end
   end
+
+  it 'puts the signer e-mail under the name' do
+    lines = described_class.stamp_lines(submitter)
+
+    expect(lines[0]).to eq(I18n.t('qes.stamp.title'))
+    expect(lines[1]).to eq(submitter.name)
+    expect(lines[2]).to eq(submitter.email)
+    expect(lines.size).to eq(4)
+  end
+
+  it 'omits a missing e-mail instead of leaving a blank line' do
+    submitter.email = nil
+
+    expect(described_class.stamp_lines(submitter)).not_to include(nil, '')
+  end
+
+  it 'keeps the fixed font for three lines and shrinks it for four' do
+    expect(described_class.font_size_for(44, 3, 4.4)).to eq(9)
+    expect(described_class.font_size_for(44, 4, 4.4)).to be < 9
+    expect(described_class.font_size_for(50, 4, 5)).to be > 8
+  end
 end
