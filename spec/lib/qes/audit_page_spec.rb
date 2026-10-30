@@ -39,6 +39,24 @@ RSpec.describe Qes::AuditPage do
     end
   end
 
+  it 'adds the submitter e-mail to the audit page' do
+    session = create(:qes_session)
+
+    I18n.with_locale(:cs) do
+      rows = described_class.rows_for(session).to_h
+      expect(rows).to include('E-mail podepisujícího' => session.submitter.email)
+    end
+  end
+
+  it 'omits a missing submitter e-mail' do
+    session = create(:qes_session)
+    session.submitter.update!(email: nil)
+
+    I18n.with_locale(:cs) do
+      expect(described_class.rows_for(session).to_h).not_to have_key('E-mail podepisujícího')
+    end
+  end
+
   it 'adds the self-reported application platform and version to the audit page' do
     session = create(:qes_session, app_metadata: { 'platform' => 'android', 'version' => '1.3.9' })
 

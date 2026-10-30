@@ -26,12 +26,8 @@ module Qes
       report = session.validation_report || {}
 
       [
-        row(I18n.t('qes.audit.field'), session.field&.dig('name').presence || session.field_uuid),
-        row(I18n.t('qes.audit.certificate_subject'), info['subject']),
-        row(I18n.t('qes.audit.certificate_issuer'), info['issuer']),
-        row(I18n.t('qes.audit.certificate_serial'), info['serial']),
-        row(I18n.t('qes.audit.level'), session.level.to_s.upcase),
-        row(I18n.t('qes.audit.key_location'), session.key_location),
+        row(I18n.t('qes.audit.signer_email'), session.submitter.email),
+        *certificate_rows(session, info),
         *app_rows(session),
         *time_rows(session),
         row(I18n.t('qes.audit.document_digest'), session.document_digest),
@@ -41,6 +37,17 @@ module Qes
         row(I18n.t('qes.audit.seal'), session.seal_state),
         row(I18n.t('qes.audit.protocol'), '1')
       ].compact
+    end
+
+    def certificate_rows(session, info)
+      [
+        row(I18n.t('qes.audit.field'), session.field&.dig('name').presence || session.field_uuid),
+        row(I18n.t('qes.audit.certificate_subject'), info['subject']),
+        row(I18n.t('qes.audit.certificate_issuer'), info['issuer']),
+        row(I18n.t('qes.audit.certificate_serial'), info['serial']),
+        row(I18n.t('qes.audit.level'), session.level.to_s.upcase),
+        row(I18n.t('qes.audit.key_location'), session.key_location)
+      ]
     end
 
     # Self-reported metadata z appky (SPEC § 5.4); staré sessiony ji nemají.

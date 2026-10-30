@@ -142,6 +142,7 @@ RSpec.describe 'Upstream contracts used by the QES fork' do
       end
 
       expect(text).to include(I18n.t('qes.audit.title'))
+      expect(text).to include(submitter.email)
     end
   end
 
