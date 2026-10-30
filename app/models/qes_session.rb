@@ -111,7 +111,9 @@ class QesSession < ApplicationRecord
       return completed + Qes::Config[:completed_session_ttl].to_i.seconds <= at
     end
 
-    state == 'expired' || (expires_at.present? && expires_at <= at)
+    state == 'expired' || (expires_at.present? && expires_at <= at) ||
+      # Absolutní strop (#23.4): opakované prodloužení nesmí držet session naživo věčně.
+      (created_at.present? && created_at + Qes::Config[:session_max_ttl].to_i.seconds <= at)
   end
 
   def certificate

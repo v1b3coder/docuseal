@@ -111,6 +111,20 @@ RSpec.describe QesSession do
     expect(session.expired?).to be false
   end
 
+  it 'expires an active session at the absolute cap even with a future link expiry' do
+    session = create(:qes_session, state: 'awaiting_app', created_at: 2.hours.ago,
+                                   expires_at: 10.minutes.from_now)
+
+    expect(session.expired?).to be true
+  end
+
+  it 'keeps a completed session readable past the absolute cap' do
+    session = create(:qes_session, state: 'completed', created_at: 2.hours.ago,
+                                   completed_at: 1.minute.ago, expires_at: 1.minute.ago)
+
+    expect(session.expired?).to be false
+  end
+
   it 'expires a stale session and keeps the token digest' do
     token = Qes::Token.generate
     session = create(:qes_session, token_digest: Qes::Token.digest(token),

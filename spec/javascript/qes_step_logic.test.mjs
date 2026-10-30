@@ -23,6 +23,7 @@ test('maps API error codes to i18n keys', () => {
   assert.equal(errorKey('unknown_token'), 'qes_error_expired_token')
   assert.equal(errorKey('form_not_active'), 'qes_error_form_not_active')
   assert.equal(errorKey('rate_limited'), 'qes_error_network')
+  assert.equal(errorKey('user_cancelled'), 'qes_error_user_cancelled')
   assert.equal(errorKey('disabled'), 'qes_error_disabled')
   assert.equal(errorKey('fields_incomplete'), 'qes_error_fields_incomplete')
   assert.equal(errorKey('seal_failed'), 'qes_error_seal_failed')

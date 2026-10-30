@@ -28,7 +28,8 @@ export const ERROR_KEYS = {
   rate_limited: 'qes_error_network',
   disabled: 'qes_error_disabled',
   server_error: 'qes_error_network',
-  network: 'qes_error_network'
+  network: 'qes_error_network',
+  user_cancelled: 'qes_error_user_cancelled'
 }
 
 // Stabilní pořadí: všechna data i ověření před podpisem.
