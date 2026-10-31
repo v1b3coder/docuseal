@@ -47,7 +47,7 @@ en:
     audit:
       title: Qualified electronic signature (QES/AdES)
       field: Field
-      signer_email: Signer e-mail
+      certificate_email: Certificate e-mail
       certificate_subject: Certificate subject
       certificate_issuer: Certificate issuer
       certificate_serial: Certificate serial number
@@ -163,7 +163,7 @@ cs:
     audit:
       title: Kvalifikovaný elektronický podpis (QES/AdES)
       field: Pole
-      signer_email: E-mail podepisujícího
+      certificate_email: E-mail v certifikátu
       certificate_subject: Předmět certifikátu
       certificate_issuer: Vydavatel certifikátu
       certificate_serial: Sériové číslo certifikátu

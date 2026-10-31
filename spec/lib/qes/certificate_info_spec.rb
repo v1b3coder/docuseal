@@ -53,6 +53,51 @@ RSpec.describe Qes::CertificateInfo do
         .to include(level: 'ades', key_type: 'rsa')
     end
   end
+
+  describe 'certificate e-mail' do
+    def certificate_with_san(*names)
+      key = OpenSSL::PKey::RSA.new(2048)
+      cert = OpenSSL::X509::Certificate.new
+      cert.version = 2
+      cert.serial = OpenSSL::BN.rand(64)
+      cert.subject = OpenSSL::X509::Name.parse('/C=CZ/O=Test/CN=Jan Novak')
+      cert.issuer = cert.subject
+      cert.public_key = key.public_key
+      cert.not_before = Time.current - 60
+      cert.not_after = 1.day.from_now
+
+      factory = OpenSSL::X509::ExtensionFactory.new
+      factory.subject_certificate = cert
+      factory.issuer_certificate = cert
+      cert.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
+      cert.add_extension(factory.create_extension('subjectAltName', names.join(','), false)) if names.any?
+      cert.sign(key, OpenSSL::Digest.new('SHA256'))
+
+      described_class.parse(cert.to_der)
+    end
+
+    it 'returns the first SAN e-mail when the certificate has several' do
+      info = certificate_with_san('email:jan@firma.cz', 'email:druhy@firma.cz')
+
+      expect(info.email).to eq('jan@firma.cz')
+      expect(info.email_addresses).to eq(['jan@firma.cz', 'druhy@firma.cz'])
+    end
+
+    it 'skips SAN entries that are not e-mail addresses' do
+      info = certificate_with_san('DNS:example.com', 'email:jan@firma.cz')
+
+      expect(info.email).to eq('jan@firma.cz')
+    end
+
+    it 'returns nil when the certificate has no SAN e-mail' do
+      expect(certificate_with_san('DNS:example.com').email).to be_nil
+    end
+
+    it 'returns nil when the certificate has no subjectAltName' do
+      expect(certificate_with_san.email).to be_nil
+    end
+  end
+
   describe 'document signing key usage' do
     %w[digitalSignature nonRepudiation digitalSignature,nonRepudiation].each do |usage|
       it "accepts #{usage}" do
