@@ -26,7 +26,6 @@ module Qes
       report = session.validation_report || {}
 
       [
-        row(I18n.t('qes.audit.signer_email'), session.submitter.email),
         *certificate_rows(session, info),
         *app_rows(session),
         *time_rows(session),
@@ -43,6 +42,7 @@ module Qes
       [
         row(I18n.t('qes.audit.field'), session.field&.dig('name').presence || session.field_uuid),
         row(I18n.t('qes.audit.certificate_subject'), info['subject']),
+        row(I18n.t('qes.audit.certificate_email'), info['email']),
         row(I18n.t('qes.audit.certificate_issuer'), info['issuer']),
         row(I18n.t('qes.audit.certificate_serial'), info['serial']),
         row(I18n.t('qes.audit.level'), session.level.to_s.upcase),

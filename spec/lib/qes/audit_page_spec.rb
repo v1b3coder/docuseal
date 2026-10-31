@@ -39,21 +39,21 @@ RSpec.describe Qes::AuditPage do
     end
   end
 
-  it 'adds the submitter e-mail to the audit page' do
-    session = create(:qes_session)
+  it 'adds the certificate e-mail to the audit page' do
+    session = create(:qes_session, certificate_info: { 'subject' => 'CN=Jan Novák',
+                                                       'email' => 'jan@firma.cz' })
 
     I18n.with_locale(:cs) do
       rows = described_class.rows_for(session).to_h
-      expect(rows).to include('E-mail podepisujícího' => session.submitter.email)
+      expect(rows).to include('E-mail v certifikátu' => 'jan@firma.cz')
     end
   end
 
-  it 'omits a missing submitter e-mail' do
-    session = create(:qes_session)
-    session.submitter.update!(email: nil)
+  it 'omits a certificate without an e-mail' do
+    session = create(:qes_session, certificate_info: { 'subject' => 'CN=Jan Novák' })
 
     I18n.with_locale(:cs) do
-      expect(described_class.rows_for(session).to_h).not_to have_key('E-mail podepisujícího')
+      expect(described_class.rows_for(session).to_h).not_to have_key('E-mail v certifikátu')
     end
   end
 

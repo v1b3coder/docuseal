@@ -14,6 +14,8 @@ module Qes
     }.freeze
 
     DIGITAL_SIGNATURE_BIT = 0
+    SAN_OID = '2.5.29.17'
+    SAN_RFC822_NAME = 1
 
     attr_reader :certificate
 
@@ -114,6 +116,23 @@ module Qes
       "0x#{certificate.serial.to_s(16).upcase}"
     end
 
+    # SAN e-maily podepisujícího v pořadí v certifikátu. PostSignum jich umí
+    # až 3, I.CA e-mail nemusí mít vůbec; do auditu jde první uvedený.
+    def email_addresses
+      extension = find_extension(SAN_OID, 'subjectAltName')
+      return [] if extension.blank?
+
+      OpenSSL::ASN1.decode(extension.value_der).value.filter_map do |name|
+        name.value if name.tag_class == :CONTEXT_SPECIFIC && name.tag == SAN_RFC822_NAME
+      end
+    rescue OpenSSL::ASN1::ASN1Error
+      []
+    end
+
+    def email
+      email_addresses.first
+    end
+
     def to_h
       {
         subject: certificate.subject.to_s,
@@ -125,7 +144,8 @@ module Qes
         qc_statements: qc_statements,
         key_type: key_type,
         key_size: key_size,
-        key_usage: key_usage
+        key_usage: key_usage,
+        email: email
       }
     end
 

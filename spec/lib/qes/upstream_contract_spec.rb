@@ -128,7 +128,8 @@ RSpec.describe 'Upstream contracts used by the QES fork' do
                             account: submitter.account, field_uuid: field['uuid'],
                             state: 'completed', completed_at: Time.current, level: 'ades',
                             certificate_info: { 'subject' => 'CN=Jan Novák', 'issuer' => 'CN=Test Root',
-                                                'serial' => '0x1001' },
+                                                'serial' => '0x1001',
+                                                'email' => 'jan@firma.cz' },
                             validation_report: { 'intact' => true, 'trusted' => true,
                                                  'coverage' => 'full' })
       submitter.update!(completed_at: Time.current)
@@ -142,7 +143,7 @@ RSpec.describe 'Upstream contracts used by the QES fork' do
       end
 
       expect(text).to include(I18n.t('qes.audit.title'))
-      expect(text).to include(submitter.email)
+      expect(text).to include('jan@firma.cz')
     end
   end
 
