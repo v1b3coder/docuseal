@@ -188,7 +188,7 @@ RSpec.describe 'QES chained signatures' do
     expect(pdfs).not_to have_key(excluded)
 
     field = Qes.template_fields(submission).find { |f| f['type'] == 'qes' }
-    tbs = Qes::TbsDocument.build(submitter, field)
+    tbs = Qes::TbsDocument.build(submitter, field, identity: QesHelpers.stamp_identity)
     text = Pdfium::Document.open_io(StringIO.new(tbs)) { |pdf| pdf.get_page(0).text }
     expect(text).to include('Included contract', I18n.t('qes.stamp.title', locale: submitter.account.locale))
   end

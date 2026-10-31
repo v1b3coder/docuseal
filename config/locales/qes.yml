@@ -26,6 +26,7 @@ en:
       unauthorized: Unauthorized request.
       signature_size_exceeded: The signature does not fit into the reserved space.
       signing_context_mismatch: The signed attributes do not match.
+      stamp_mismatch: The stamp does not match the signing certificate.
       ltv_unavailable: Revocation information is not available.
       validation_failed: The signature could not be validated.
       tsa_trust_not_configured: Timestamp authority trust roots are missing. Configure QES_TSA_TRUST_ROOTS.
@@ -145,6 +146,7 @@ cs:
       unauthorized: Neautorizovaný požadavek.
       signature_size_exceeded: Podpis se nevejde do rezervovaného místa.
       signing_context_mismatch: Podepsané atributy se neshodují.
+      stamp_mismatch: Pečeť neodpovídá certifikátu podpisu.
       ltv_unavailable: Revokační informace nejsou dostupné.
       validation_failed: Podpis se nepodařilo ověřit.
       tsa_trust_not_configured: Chybí důvěryhodné kořenové certifikáty časové autority. Nastavte QES_TSA_TRUST_ROOTS.

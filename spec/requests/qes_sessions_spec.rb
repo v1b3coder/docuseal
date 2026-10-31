@@ -231,7 +231,7 @@ RSpec.describe 'Qes sessions API', type: :request do
     end.not_to change(QesSession, :count)
     expect(response).to have_http_status(:unprocessable_content)
     expect(response.parsed_body['error']).to eq('document_set_changed')
-    expect { Qes::TbsDocument.build(second.reload, second_field) }
+    expect { Qes::TbsDocument.build(second.reload, second_field, identity: stamp_identity(pkcs)) }
       .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:document_set_changed) }
 
     # The persisted manifest supplies offsets again once the original set is restored.

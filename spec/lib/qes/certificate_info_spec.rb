@@ -55,12 +55,12 @@ RSpec.describe Qes::CertificateInfo do
   end
 
   describe 'certificate e-mail' do
-    def certificate_with_san(*names)
+    def certificate_with_san(*names, subject: '/C=CZ/O=Test/CN=Jan Novak')
       key = OpenSSL::PKey::RSA.new(2048)
       cert = OpenSSL::X509::Certificate.new
       cert.version = 2
       cert.serial = OpenSSL::BN.rand(64)
-      cert.subject = OpenSSL::X509::Name.parse('/C=CZ/O=Test/CN=Jan Novak')
+      cert.subject = OpenSSL::X509::Name.parse(subject)
       cert.issuer = cert.subject
       cert.public_key = key.public_key
       cert.not_before = Time.current - 60
@@ -95,6 +95,18 @@ RSpec.describe Qes::CertificateInfo do
 
     it 'returns nil when the certificate has no subjectAltName' do
       expect(certificate_with_san.email).to be_nil
+    end
+
+    it 'builds the stamp identity from CN and the first e-mail' do
+      info = certificate_with_san('email:jan@firma.cz', 'email:druhy@firma.cz')
+
+      expect(info.stamp_identity).to eq('name' => 'Jan Novak', 'email' => 'jan@firma.cz')
+    end
+
+    it 'falls back to the full subject when the certificate has no CN' do
+      info = certificate_with_san('email:jan@firma.cz', subject: '/C=CZ/O=Test')
+
+      expect(info.stamp_identity).to eq('name' => '/C=CZ/O=Test', 'email' => 'jan@firma.cz')
     end
   end
 

@@ -11,6 +11,7 @@ RSpec.describe Qes::Providers::MobileApp do
   let(:session) { create(:qes_session, state: 'awaiting_app') }
   let(:provider) { described_class.new(session) }
   let(:pkcs) { QesHelpers.pkcs12 }
+  let(:stamp_identity) { QesHelpers.stamp_identity(pkcs) }
 
   def prepare_document
     provider.data_to_sign(pkcs.certificate.to_der, chain: pkcs.ca_certs || [],
@@ -25,7 +26,7 @@ RSpec.describe Qes::Providers::MobileApp do
   end
 
   it 'builds the TBS before the certificate and reuses it for signing attributes' do
-    provider.prepare_document
+    provider.prepare_document(stamp_identity)
     tbs = session.reload.tbs_document.download
     expect(session.state).to eq('awaiting_app')
 
@@ -35,8 +36,38 @@ RSpec.describe Qes::Providers::MobileApp do
     expect(session.tbs_document.download).to eq(tbs)
   end
 
+  it 'rebuilds the TBS when the certificate identity changes' do
+    other = QesHelpers.pkcs12('signer-qscd.p12')
+    provider.prepare_document(stamp_identity)
+    first = session.reload.tbs_document.download
+
+    provider.prepare_document(QesHelpers.stamp_identity(other))
+
+    expect(session.reload.tbs_document.download).not_to eq(first)
+    expect(session.tbs_document.blob.metadata['qes_stamp_identity'])
+      .to eq(QesHelpers.stamp_identity(other))
+  end
+
+  it 'does not rebuild a prepared TBS with a different certificate' do
+    prepare_document
+    other = QesHelpers.stamp_identity(QesHelpers.pkcs12('signer-qscd.p12'))
+
+    expect { provider.prepare_document(other) }
+      .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:wrong_state) }
+  end
+
+  it 'rejects a stamp that does not match the signing certificate on completion' do
+    prepare_document
+    signature = pkcs.key.sign(OpenSSL::Digest.new('SHA256'), session.signed_attrs_der)
+    session.tbs_document.blob.update!(metadata: session.tbs_document.blob.metadata
+                                                      .merge('qes_stamp_identity' => { 'name' => 'Mallory' }))
+
+    expect { provider.complete!(signature) }
+      .to raise_error(Qes::ClientError) { |error| expect(error.code).to eq(:stamp_mismatch) }
+  end
+
   it 'rejects values changed after the document was prepared' do
-    provider.prepare_document
+    provider.prepare_document(stamp_identity)
     field = session.submission.template_fields.find { |item| item['type'] == 'text' }
     session.submitter.update!(values: { field['uuid'] => 'Changed after preparation' })
 

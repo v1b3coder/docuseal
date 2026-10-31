@@ -30,17 +30,10 @@ module Qes
     def document
       return render_qes_error_with(:used_token, :gone) if @session.terminal?
       return render_qes_error_with(:expired_token, :gone) if @session.expired?
-      unless @session.state.in?(%w[awaiting_app app_opened awaiting_signature])
-        return render_qes_error_with(:wrong_state, :conflict)
-      end
+      # TBS se staví až z přijatého certifikátu (pečeť nese jeho identitu),
+      # takže dokument bez certifikátu neexistuje.
+      return render_qes_error_with(:wrong_state, :conflict) unless @session.state == 'awaiting_signature'
 
-      # TBS se staví před certifikátem; appka tak může zobrazit přesně ty
-      # bajty, které se budou podepisovat, a klíč se odemyká až po kontrole.
-      if !@session.tbs_document.attached? && @session.state == 'awaiting_signature'
-        return render_qes_error_with(:document_missing, :conflict)
-      end
-
-      provider_for(@session).prepare_document unless @session.tbs_document.attached?
       return render_qes_error_with(:document_missing, :conflict) unless @session.tbs_document.attached?
 
       extend_expiry!(Qes::Config[:review_ttl])
