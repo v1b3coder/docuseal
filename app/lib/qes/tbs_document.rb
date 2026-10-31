@@ -15,7 +15,7 @@ module Qes
 
     module_function
 
-    def build(submitter, field = nil, signature_size: nil, manifest: nil)
+    def build(submitter, field = nil, identity:, signature_size: nil, manifest: nil)
       manifest ||= document_manifest(submitter)
       base = chained_base(submitter)
       offsets = page_offsets(submitter.submission, manifest:)
@@ -31,13 +31,13 @@ module Qes
         )
         base = pdfs.values.first || base
 
-        Qes::Stamp.draw(base, submitter, field, offsets)
+        Qes::Stamp.draw(base, identity, field, locale: submitter.account.locale, offsets:)
 
         sign(base, signature_size)
       else
         pdf = merged_document(submitter)
         validate_page_count!(pdf, manifest)
-        Qes::Stamp.draw(pdf, submitter, field, offsets)
+        Qes::Stamp.draw(pdf, identity, field, locale: submitter.account.locale, offsets:)
 
         sign(pdf, signature_size)
       end

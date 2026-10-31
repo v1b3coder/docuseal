@@ -6,6 +6,7 @@ RSpec.describe Qes::Stamp do
   before { QesHelpers.configure! }
 
   let(:submitter) { QesHelpers.build_qes_submitter }
+  let(:identity) { QesHelpers.stamp_identity }
 
   def bitmap(pdf)
     io = StringIO.new
@@ -23,7 +24,7 @@ RSpec.describe Qes::Stamp do
                              'h' => height / 300.0, 'page' => 0 }] }
       before = bitmap(pdf)
 
-      described_class.draw(pdf, submitter, field)
+      described_class.draw(pdf, identity, field, locale: submitter.account.locale)
       after = bitmap(pdf)
 
       outside_changes = []
@@ -39,5 +40,31 @@ RSpec.describe Qes::Stamp do
       expect(outside_changes).to be_empty
       expect(after).not_to eq(before) if width > 1
     end
+  end
+
+  it 'puts the certificate e-mail under the name' do
+    identity = { 'name' => 'Jan Novák', 'email' => 'jan@firma.cz' }
+
+    I18n.with_locale(submitter.account.locale) do
+      lines = described_class.stamp_lines(identity, locale: submitter.account.locale)
+
+      expect(lines).to eq([I18n.t('qes.stamp.title'), 'Jan Novák', 'jan@firma.cz',
+                           I18n.l(Time.current.to_date, format: :long, locale: submitter.account.locale)])
+    end
+  end
+
+  it 'omits the e-mail line when the certificate has none' do
+    I18n.with_locale(submitter.account.locale) do
+      lines = described_class.stamp_lines({ 'name' => 'Jan Novák' }, locale: submitter.account.locale)
+
+      expect(lines.size).to eq(3)
+      expect(lines).not_to include(nil, '')
+    end
+  end
+
+  it 'keeps the fixed font for three lines and shrinks it for four' do
+    expect(described_class.font_size_for(44, 3, 4.4)).to eq(9)
+    expect(described_class.font_size_for(44, 4, 4.4)).to be < 9
+    expect(described_class.font_size_for(50, 4, 5)).to be > 8
   end
 end

@@ -10,7 +10,7 @@ module Qes
 
     module_function
 
-    def draw(pdf, submitter, field, offsets = {})
+    def draw(pdf, identity, field, locale:, offsets: {})
       area = field&.dig('areas', 0)
       return if area.present? && offsets.present? && !offsets.key?(area['attachment_uuid'])
 
@@ -34,12 +34,12 @@ module Qes
 
       y = height - top - h
 
-      lines = stamp_lines(submitter)
+      lines = stamp_lines(identity, locale:)
       return if lines.empty?
 
       font = pdf.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
-      font_size = (h * 0.22).clamp(4, 9).to_f
       padding = [h * 0.10, 2.5].max
+      font_size = font_size_for(h, lines.size, padding)
       canvas = page.canvas(type: :overlay)
 
       canvas.save_graphics_state do
@@ -66,16 +66,24 @@ module Qes
       end
     end
 
-    def stamp_lines(submitter)
-      locale = submitter.account.locale
-
+    def stamp_lines(identity, locale:)
       I18n.with_locale(locale) do
         [
           I18n.t('qes.stamp.title'),
-          submitter.name.to_s,
+          identity['name'].to_s,
+          identity['email'].to_s,
           I18n.l(Time.current.to_date, format: :long, locale: locale)
-        ].map(&:strip).reject(&:blank?)
+        ].map(&:strip).compact_blank
       end
+    end
+
+    # Pečeť má 4 řádky (title, jméno, e-mail, datum); pevný font z výšky pole
+    # by 4. řádek do malého pole nevešel a tiše se zahodil. Font se proto
+    # zmenší tak, aby se všechny řádky vešly (min 4 pt).
+    def font_size_for(height, line_count, padding)
+      fitting = (height - padding) / (1.25 + (1.3 * (line_count - 1)))
+
+      [fitting, height * 0.22].min.clamp(4, 9).to_f
     end
 
     def fit_text(font, text, font_size, max_width)

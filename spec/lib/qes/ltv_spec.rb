@@ -171,7 +171,10 @@ RSpec.describe Qes::Ltv do
       fresh = issue_crl(intermediate, intermediate_key, revoked: [leaf])
       allow(described_class).to receive(:fetch_crls).and_return([fresh])
       session = double('session', state: 'awaiting_signature', certificate: leaf,
-                                  tbs_document: double(blob: double(metadata: { 'qes_values' => {} })),
+                                  tbs_document: double(blob: double(metadata: {
+                                    'qes_values' => {},
+                                    'qes_stamp_identity' => Qes::CertificateInfo.new(leaf).stamp_identity
+                                  })),
                                   signed_attrs_der: 'signed attributes', hash_algorithm: 'SHA256',
                                   certificate_chain: [leaf, intermediate].map { |cert| Base64.strict_encode64(cert.to_der) })
       provider = Qes::Providers::MobileApp.new(session)

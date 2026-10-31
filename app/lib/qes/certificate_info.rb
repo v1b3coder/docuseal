@@ -133,6 +133,18 @@ module Qes
       email_addresses.first
     end
 
+    # Jméno do pečeti: CN z předmětu certifikátu. Kvalifikované certy CN mají;
+    # kdyby chyběl, použije se celý předmět, aby pečeť nebyla prázdná.
+    def common_name
+      certificate.subject.to_a.find { |name, _, _| name == 'CN' }&.at(1)
+    end
+
+    # Identita, kterou nese viditelná pečeť v TBS. Ukládá se do metadat TBS
+    # a `complete!` po podpisu ověří, že sedí s certifikátem podpisu.
+    def stamp_identity
+      { 'name' => common_name.presence || certificate.subject.to_s, 'email' => email }.compact
+    end
+
     def to_h
       {
         subject: certificate.subject.to_s,

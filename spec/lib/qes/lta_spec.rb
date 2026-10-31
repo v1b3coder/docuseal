@@ -14,7 +14,7 @@ RSpec.describe 'QES PAdES-LTA' do
 
   it 'adds DSS and DocTS and validates as intact, trusted and fully covered' do
     QesHelpers.with_crl_server do
-      tbs_pdf = Qes::TbsDocument.build(submitter, field)
+      tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
       data = Qes::TbsDocument.signed_data(StringIO.new(tbs_pdf), Qes::TbsDocument.byte_range(tbs_pdf))
       prepared = Qes::CmsBuilder.prepare(data:, certificate: pkcs.certificate, chain: pkcs.ca_certs)
       signature = pkcs.key.sign(OpenSSL::Digest.new('SHA256'), prepared[:signed_attrs_der])

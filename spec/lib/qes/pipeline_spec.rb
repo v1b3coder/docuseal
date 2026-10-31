@@ -16,7 +16,7 @@ RSpec.describe 'QES cryptographic pipeline' do
   let(:pkcs) { QesHelpers.pkcs12 }
 
   def build_signed_pdf(pkcs: self.pkcs, tsa_url: nil)
-    tbs_pdf = Qes::TbsDocument.build(submitter, field)
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)
 
     expect(byte_range).to be_present
@@ -39,7 +39,7 @@ RSpec.describe 'QES cryptographic pipeline' do
   end
 
   it 'creates a TBS PDF with a signature field and full coverage' do
-    tbs_pdf = Qes::TbsDocument.build(submitter, field)
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     doc = HexaPDF::Document.new(io: StringIO.new(tbs_pdf))
 
     expect(doc.signatures.to_a.size).to eq(1)
@@ -51,7 +51,7 @@ RSpec.describe 'QES cryptographic pipeline' do
   end
 
   it 'produces signed attributes with signingTime and message-digest' do
-    tbs_pdf = Qes::TbsDocument.build(submitter, field)
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)
     data = Qes::TbsDocument.signed_data(StringIO.new(tbs_pdf), byte_range)
 
@@ -70,7 +70,7 @@ RSpec.describe 'QES cryptographic pipeline' do
   end
 
   it 'produces byte-identical signed attributes for the same signing time' do
-    tbs_pdf = Qes::TbsDocument.build(submitter, field)
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)
     data = Qes::TbsDocument.signed_data(StringIO.new(tbs_pdf), byte_range)
     signing_time = Time.now.utc

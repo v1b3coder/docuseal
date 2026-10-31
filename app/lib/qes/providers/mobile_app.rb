@@ -10,12 +10,18 @@ module Qes
       def initialize(session)
         @session = session
       end
-      # TBS se staví před přijetím certifikátu (`GET /document`), aby appka
-      # mohla zobrazit přesně ty bajty, které se budou podepisovat. Rezerva
-      # `/Contents` je pevná (`QES_SIGNATURE_RESERVE`), nezávislá na certifikátu;
-      # finální CMS se do ní musí vejít (`signature_size_exceeded`).
-      def prepare_document
-        return session.tbs_document if session.tbs_document.attached?
+
+      # TBS se staví až z přijatého certifikátu: viditelná pečeť nese jeho CN
+      # a e-mail, takže dokument bez certifikátu neexistuje. Rezerva `/Contents`
+      # je pevná (`QES_SIGNATURE_RESERVE`), nezávislá na certifikátu.
+      def prepare_document(identity)
+        return session.tbs_document if session.tbs_document.attached? && tbs_stamp_identity == identity
+
+        # Jiný certifikát nad už podepsaným TBS by změnil identitu v pečeti;
+        # v `awaiting_signature` se proto nepřestavuje.
+        if session.tbs_document.attached? && session.state == 'awaiting_signature'
+          raise ClientError.new(:wrong_state, 'Document was prepared with a different certificate')
+        end
 
         candidate = Submitter.find(session.submitter_id)
         original_values = candidate.values.deep_dup
@@ -30,16 +36,16 @@ module Qes
         base_digest = Qes::TbsDocument.base_digest(candidate)
         tbs_pdf = Qes::TbsDocument.build(
           candidate, session.field,
-          signature_size: Qes::Config[:signature_reserve], manifest:
+          signature_size: Qes::Config[:signature_reserve], manifest:, identity:
         )
 
         # Bajty musí být uložené před zveřejněním dokumentu appce.
         tbs_blob = upload_document(tbs_pdf, 'qes-tbs',
                                    metadata: { qes_values: values_snapshot, qes_document_manifest: manifest,
-                                               qes_base_digest: base_digest })
+                                               qes_base_digest: base_digest, qes_stamp_identity: identity })
 
         session.with_lock do
-          return session.tbs_document if session.tbs_document.attached?
+          return session.tbs_document if session.tbs_document.attached? && tbs_stamp_identity == identity
 
           unless session.state.in?(%w[awaiting_app app_opened])
             raise ClientError.new(:wrong_state, 'Session is not awaiting a document')
@@ -63,7 +69,7 @@ module Qes
         session.tbs_document
       end
 
-      # Certifikát se ověřuje až po kontrole dokumentu; TBS už je uložený
+      # Certifikát se ověřuje před stavbou TBS; TBS nese identitu z certu
       # a `POST /certificate` nad ním jen vytvoří podepsané atributy.
       def data_to_sign(certificate_der, chain: [], key_location: nil, app_metadata: nil, crls: nil)
         chain = normalize_chain(chain)
@@ -73,6 +79,7 @@ module Qes
         certificate = info.certificate
         certificate_info = info.validate!(level_required: session.level_required,
                                          key_location: key_location)
+        identity = info.stamp_identity
 
         # Certifikát musí vést řetězem k trust rootu (SPEC § 5.2); jinak by šel
         # jako QES zapsat i self-signed certifikát s podvrženými QCStatements.
@@ -81,7 +88,7 @@ module Qes
         # CRL se stahují v controlleru před přípravou TBS; tady se jen ověří.
         Qes::Ltv.check_revoked!(certificate, chain:, crls:)
 
-        prepare_document
+        prepare_document(identity)
         ensure_values_unchanged!
 
         tbs_pdf = session.tbs_document.download
@@ -98,6 +105,12 @@ module Qes
         session.with_lock do
           unless session.state.in?(%w[awaiting_app app_opened])
             raise ClientError.new(:wrong_state, 'Session is not awaiting a certificate')
+          end
+
+          # Souběžné `POST /certificate` s jiným certem nesmí nechat v session
+          # TBS z jiného certu (pečeť by nesla jinou identitu).
+          unless tbs_stamp_identity == identity
+            raise ClientError.new(:wrong_state, 'Document was prepared with a different certificate')
           end
 
           session.update!(
@@ -211,6 +224,8 @@ module Qes
           raise ClientError.new(:document_set_changed, 'Signature base changed after preparation')
         end
 
+        verify_stamp_identity!
+
         Qes::CmsBuilder.verify_signature!(session.certificate, signature,
                                           session.signed_attrs_der, session.hash_algorithm)
 
@@ -313,6 +328,28 @@ module Qes
       end
 
       private
+
+      # Pečeť v TBS je vykreslená z certifikátu; po podpisu musí sedět
+      # s certifikátem, který podepsal, jinak by šlo podsunout jiný cert.
+      def verify_stamp_identity!
+        document = session.tbs_document
+        return if document.nil?
+
+        stored = document.blob&.metadata&.fetch('qes_stamp_identity', nil)
+        raise ClientError.new(:document_missing, 'Prepared document metadata is missing') if stored.blank?
+
+        expected = session.certificate && Qes::CertificateInfo.new(session.certificate).stamp_identity
+        return if stored == expected
+
+        raise ClientError.new(:stamp_mismatch, 'Stamp identity does not match the signing certificate')
+      end
+
+      def tbs_stamp_identity
+        document = session.tbs_document
+        return if document.nil?
+
+        document.blob&.metadata&.fetch('qes_stamp_identity', nil)
+      end
 
       def prepared_values!
         snapshot = session.tbs_document&.blob&.metadata&.fetch('qes_values', nil)

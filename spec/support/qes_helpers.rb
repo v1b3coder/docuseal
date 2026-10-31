@@ -26,6 +26,11 @@ module QesHelpers
     OpenSSL::X509::Certificate.new(pki_path(name).read)
   end
 
+  # Identita do pečeti z certifikátu (CN + první SAN e-mail).
+  def stamp_identity(pkcs = pkcs12)
+    Qes::CertificateInfo.new(pkcs.certificate).stamp_identity
+  end
+
   # Certifikát bez QCStatements (nekvalifikovaný) z fixtures.
   def unqualified_certificate
     OpenSSL::X509::Certificate.new(TEST_DIR.join('certs', 'signer.cert.pem').read)
@@ -116,7 +121,7 @@ module QesHelpers
   def signed_pdf(pkcs: pkcs12, seal: false, submitter: nil, tsa_url: nil)
     submitter ||= build_qes_submitter
     field = submitter.submission.template_fields.find { |f| f['type'] == 'qes' }
-    tbs_pdf = Qes::TbsDocument.build(submitter, field)
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)
     data = Qes::TbsDocument.signed_data(StringIO.new(tbs_pdf), byte_range)
     prepared = Qes::CmsBuilder.prepare(data:, certificate: pkcs.certificate,

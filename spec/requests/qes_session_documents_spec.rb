@@ -19,6 +19,11 @@ RSpec.describe 'QES token document endpoint', type: :request do
     }
   end
 
+  def prepare_document
+    post '/qes/sessions/document/certificate', params: certificate_params
+    expect(response).to have_http_status(:ok)
+  end
+
   %w[sha256 sha384].each do |algorithm|
     it "serves the exact TBS with a matching #{algorithm} ByteRange and CMS messageDigest" do
       session.update!(hash_algorithm: algorithm)
@@ -71,7 +76,7 @@ RSpec.describe 'QES token document endpoint', type: :request do
     expect(response.parsed_body['error']).to eq('expired_token')
   end
 
-  %w[created prepared signed embedded validated].each do |state|
+  %w[created prepared awaiting_app signed embedded validated].each do |state|
     it "does not serve a document in #{state}" do
       session.update!(state:)
       get '/qes/sessions/document/document'
@@ -80,19 +85,21 @@ RSpec.describe 'QES token document endpoint', type: :request do
     end
   end
 
-  it 'extends the review and signature TTLs' do
+  it 'extends the signature and review TTLs' do
     session.update!(expires_at: 1.minute.from_now)
-    get '/qes/sessions/document/document'
-    expect(response).to have_http_status(:ok)
+    prepare_document
     expect(session.reload.expires_at).to be > 5.minutes.from_now
 
-    post '/qes/sessions/document/certificate', params: certificate_params
+    session.update!(expires_at: 1.minute.from_now)
+    get '/qes/sessions/document/document'
     expect(response).to have_http_status(:ok)
     expect(session.reload.expires_at).to be > 5.minutes.from_now
   end
 
   it 'caps the review TTL at the absolute session lifetime' do
     session.update!(created_at: 55.minutes.ago, expires_at: 1.minute.from_now)
+    prepare_document
+    session.update!(expires_at: 1.minute.from_now)
 
     get '/qes/sessions/document/document'
 
@@ -118,17 +125,29 @@ RSpec.describe 'QES token document endpoint', type: :request do
     expect(response.parsed_body['error']).to eq('expired_token')
   end
 
-  it 'serves the unsigned TBS before the certificate and does not rebuild it on certificate' do
+  it 'requires the certificate before serving the document' do
     session
     get '/qes/sessions/document/document'
-    expect(response).to have_http_status(:ok)
-    tbs = session.reload.tbs_document.download
-    expect(response.body.b).to eq(tbs)
-    expect(session.state).to eq('awaiting_app')
 
-    post '/qes/sessions/document/certificate', params: certificate_params
-    expect(response).to have_http_status(:ok)
+    expect(response).to have_http_status(:conflict)
+    expect(response.parsed_body['error']).to eq('wrong_state')
+  end
+
+  it 'builds the TBS with the certificate stamp and reuses it for signing attributes' do
+    session
+    prepare_document
     expect(session.reload.state).to eq('awaiting_signature')
+    tbs = session.tbs_document.download
+
+    get '/qes/sessions/document/document'
+    expect(response).to have_http_status(:ok)
+    expect(response.body.b).to eq(tbs)
+    expect(session.tbs_document.blob.metadata['qes_stamp_identity'])
+      .to eq(QesHelpers.stamp_identity(pkcs))
+    text = Pdfium::Document.open_io(StringIO.new(tbs)) { |pdf| pdf.get_page(0).text }
+    expect(text).to include('signer-ades')
+
+    prepare_document
     expect(session.tbs_document.download).to eq(tbs)
     expect(response.parsed_body['document_digest']).to eq(session.document_digest)
   end
