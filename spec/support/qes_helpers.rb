@@ -115,6 +115,18 @@ module QesHelpers
     submission
   end
 
+  # Text z appearance streamu posledního podpisového pole (widget pečeti,
+  # SPEC § 7.1); v obsahu stránky už pečeť není.
+  def stamp_text(pdf_bytes)
+    document = HexaPDF::Document.new(io: StringIO.new(pdf_bytes))
+    field = document.acro_form.each_field.select { |item| item.field_type == :Sig }.to_a.last
+    form = field.each_widget.first.appearance
+    processor = HexaPDF::Content::SmartTextExtractor::TextRunProcessor.new
+    form.process_contents(processor)
+
+    HexaPDF::Content::SmartTextExtractor.layout_text_runs(processor.text_runs, form.width, form.height)
+  end
+
   # Podepsané PDF bez appky (stejná pipeline jako produkce): TBS → CMS →
   # PAdES; `seal: true` přidá inkrementální pečeť DocuSealu. Pro testy
   # ověření (docs/16) stačí `signed_pdf` bez LTV.

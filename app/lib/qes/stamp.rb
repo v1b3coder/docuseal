@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
 module Qes
-  # Viditelná pečeť podepisujícího (SPEC § 7.1): kreslí se do TBS PDF před
-  # podpisem, takže ji podpis kryje a zůstává INTACT (DESIGN § 12 #8 — pole
-  # `qes` bylo neviditelné, uživatel chce pečeť vidět).
+  # Viditelná pečeť podepisujícího (SPEC § 7.1): appearance stream widgetu
+  # podpisového pole, takže ji podpis kryje a zůstává INTACT (DESIGN § 12 #8).
+  # Widget (a tedy i pečeť) je součástí TBS PDF před podpisem, takže ho vidí
+  # i analýza revizí (pyHanko): nový viditelný podpis je form filling,
+  # ne změna obsahu stránky.
   module Stamp
     MIN_WIDTH = 150
     MIN_HEIGHT = 44
 
     module_function
 
-    def draw(pdf, identity, field, locale:, offsets: {})
+    # Umístění pole `qes` v globálním indexu stránek: [page, Rect] v PDF
+    # souřadnicích (`[llx, lly, urx, ury]`).
+    # `nil` = pole do dokumentu nepatří (podmíněná příloha) nebo nemá plochu.
+    def placement(pdf, field, offsets: {})
       area = field&.dig('areas', 0)
       return if area.present? && offsets.present? && !offsets.key?(area['attachment_uuid'])
 
@@ -34,23 +39,32 @@ module Qes
 
       y = height - top - h
 
+      [page, [x, y, x + w, y + h]]
+    end
+
+    # Vykreslí pečeť do appearance streamu widgetu (form XObject s `/BBox`).
+    # Souřadnice jsou relativní k widgetu, ořez drží `BBox` i explicitní clip.
+    def draw(widget, identity, locale:)
       lines = stamp_lines(identity, locale:)
       return if lines.empty?
 
-      font = pdf.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
+      rect = widget[:Rect]
+      w = rect.width
+      h = rect.height
+      font = widget.document.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
       padding = [h * 0.10, 2.5].max
       font_size = font_size_for(h, lines.size, padding)
-      canvas = page.canvas(type: :overlay)
+      canvas = widget.create_appearance.canvas
 
       canvas.save_graphics_state do
         # Ořez platí i pro text a tah okraje, včetně velmi malých polí.
-        canvas.rectangle(x, y, w, h).clip_path.end_path
+        canvas.rectangle(0, 0, w, h).clip_path.end_path
         canvas.line_width(0.7)
         canvas.stroke_color(0x29, 0x13, 0x34)
         canvas.fill_color(0xF6, 0xF1, 0xF9)
         if w > 2 && h > 2
           radius = [2, (w - 2) / 2, (h - 2) / 2].min
-          canvas.rectangle(x + 1, y + 1, w - 2, h - 2, radius:).fill_stroke
+          canvas.rectangle(1, 1, w - 2, h - 2, radius:).fill_stroke
         end
 
         canvas.fill_color(0x29, 0x13, 0x34)
@@ -58,10 +72,10 @@ module Qes
 
         line_height = font_size * 1.3
         lines.each_with_index do |line, index|
-          baseline = y + h - padding - font_size - (line_height * index)
-          next if baseline < y
+          baseline = h - padding - font_size - (line_height * index)
+          next if baseline < 0
 
-          canvas.text(fit_text(font, line, font_size, w - (2 * padding)), at: [x + padding, baseline])
+          canvas.text(fit_text(font, line, font_size, w - (2 * padding)), at: [padding, baseline])
         end
       end
     end

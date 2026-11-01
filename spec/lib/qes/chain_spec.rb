@@ -160,9 +160,11 @@ RSpec.describe 'QES chained signatures' do
       base = HexaPDF::Document.new(io: StringIO.new(first_session.final_document.download))
       tbs = HexaPDF::Document.new(io: StringIO.new(second_session.tbs_document.download))
 
-      # Pečeť druhého signera se kreslí na globální stránku 1 (druhá příloha).
-      expect(Array(tbs.pages[1][:Contents]).size).to be > Array(base.pages[1][:Contents]).size
-      expect(Array(tbs.pages[0][:Contents]).size).to eq(Array(base.pages[0][:Contents]).size)
+      # Pečeť druhého signera je appearance widgetu na globální stránce 1
+      # (druhá příloha); obsahy stránek se nemění (SPEC § 7.1).
+      expect(tbs.pages[0][:Annots].to_a.size).to eq(base.pages[0][:Annots].to_a.size)
+      expect(tbs.pages[1][:Annots].to_a.size).to eq(base.pages[1][:Annots].to_a.size + 1)
+      expect(tbs.pages[1][:Annots].to_a.last.appearance).to be_a(HexaPDF::Type::Form)
     end
   end
   it 'uses only included documents for offsets and chained field rendering' do
@@ -190,6 +192,7 @@ RSpec.describe 'QES chained signatures' do
     field = Qes.template_fields(submission).find { |f| f['type'] == 'qes' }
     tbs = Qes::TbsDocument.build(submitter, field, identity: QesHelpers.stamp_identity)
     text = Pdfium::Document.open_io(StringIO.new(tbs)) { |pdf| pdf.get_page(0).text }
-    expect(text).to include('Included contract', I18n.t('qes.stamp.title', locale: submitter.account.locale))
+    expect(text).to include('Included contract')
+    expect(QesHelpers.stamp_text(tbs)).to include(I18n.t('qes.stamp.title', locale: submitter.account.locale))
   end
 end

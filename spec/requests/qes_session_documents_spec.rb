@@ -144,8 +144,7 @@ RSpec.describe 'QES token document endpoint', type: :request do
     expect(response.body.b).to eq(tbs)
     expect(session.tbs_document.blob.metadata['qes_stamp_identity'])
       .to eq(QesHelpers.stamp_identity(pkcs))
-    text = Pdfium::Document.open_io(StringIO.new(tbs)) { |pdf| pdf.get_page(0).text }
-    expect(text).to include('signer-ades')
+    expect(QesHelpers.stamp_text(tbs)).to include('signer-ades')
 
     prepare_document
     expect(session.tbs_document.download).to eq(tbs)
