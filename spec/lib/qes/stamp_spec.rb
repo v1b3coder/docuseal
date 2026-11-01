@@ -16,6 +16,13 @@ RSpec.describe Qes::Stamp do
     end
   end
 
+  # Widget podpisového pole na místě pole `qes` (stejná cesta jako TBS).
+  def stamp_widget(pdf, field)
+    page, rect = described_class.placement(pdf, field)
+    signature_field = pdf.acro_form(create: true).create_signature_field('Signature1')
+    signature_field.create_widget(page, Rect: rect)
+  end
+
   [[30, 16], [1, 1], [150, 44]].each do |width, height|
     it "clips every painted pixel to a #{width} by #{height} field" do
       pdf = HexaPDF::Document.new
@@ -24,7 +31,7 @@ RSpec.describe Qes::Stamp do
                              'h' => height / 300.0, 'page' => 0 }] }
       before = bitmap(pdf)
 
-      described_class.draw(pdf, identity, field, locale: submitter.account.locale)
+      described_class.draw(stamp_widget(pdf, field), identity, locale: submitter.account.locale)
       after = bitmap(pdf)
 
       outside_changes = []
@@ -40,6 +47,19 @@ RSpec.describe Qes::Stamp do
       expect(outside_changes).to be_empty
       expect(after).not_to eq(before) if width > 1
     end
+  end
+
+  it 'puts the stamp into the widget appearance stream' do
+    pdf = HexaPDF::Document.new
+    pdf.pages.add([0, 0, 300, 300])
+    field = { 'areas' => [{ 'x' => 0.2, 'y' => 0.2, 'w' => 0.5, 'h' => 0.2, 'page' => 0 }] }
+    widget = stamp_widget(pdf, field)
+
+    described_class.draw(widget, identity, locale: submitter.account.locale)
+
+    expect(widget.appearance).to be_a(HexaPDF::Type::Form)
+    expect(widget.appearance.contents).not_to be_empty
+    expect(widget.appearance[:Resources][:Font]).not_to be_empty
   end
 
   it 'puts the certificate e-mail under the name' do

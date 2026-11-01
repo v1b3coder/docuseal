@@ -2,8 +2,8 @@
 
 module Qes
   # TBS PDF: základ (šablona, nebo finální PDF předchozího signera) + podpisové
-  # pole s rezervou `/Contents` (SPEC § 7.1). Vzhled podpisu je neviditelný
-  # (`Rect: [0, 0, 0, 0]`) — rozhodnutí uživatele, viz SPEC § 16 #8.
+  # pole s rezervou `/Contents` (SPEC § 7.1). Pole má viditelný widget na místě
+  # pole `qes`; jeho appearance stream kreslí `Qes::Stamp` (SPEC § 16 #8).
   #
   # Řetězení (SPEC § 4.6): další QES signer MUSÍ podepsat finální PDF
   # předchozího signera jako novou inkrementální revizi; dokument se NESMÍ
@@ -19,6 +19,7 @@ module Qes
       manifest ||= document_manifest(submitter)
       base = chained_base(submitter)
       offsets = page_offsets(submitter.submission, manifest:)
+      stamp = { field:, identity:, locale: submitter.account.locale, offsets: }
 
       if base
         validate_page_count!(base, manifest)
@@ -31,30 +32,50 @@ module Qes
         )
         base = pdfs.values.first || base
 
-        Qes::Stamp.draw(base, identity, field, locale: submitter.account.locale, offsets:)
-
-        sign(base, signature_size)
+        sign(base, signature_size, stamp:)
       else
         pdf = merged_document(submitter)
         validate_page_count!(pdf, manifest)
-        Qes::Stamp.draw(pdf, identity, field, locale: submitter.account.locale, offsets:)
 
-        sign(pdf, signature_size)
+        sign(pdf, signature_size, stamp:)
       end
     end
 
     # Rezerva `/Contents` je `signature_size` (SPEC § 7.1); bez ní minimum
     # z konfigurace (TBS z fixtures a testů).
-    def sign(pdf, signature_size = nil)
+    # `stamp` popisuje pole `qes` (`field`), identitu pečeti a `page_offsets`.
+    def sign(pdf, signature_size = nil, stamp: nil)
+      signature_field = stamp && signature_field(pdf, **stamp)
       io = StringIO.new
       pdf.config['signature.signing_handler'][:qes_tbs] = TbsHandler
 
       pdf.sign(io, handler: :qes_tbs,
+                    signature: signature_field,
                     signature_size: (signature_size || Qes::Config[:signature_min_size]).to_i,
                     signature_type: :pades,
                     external_signing: ->(_io, _byte_range) { ''.b },
                     write_options: { validate: false })
       io.string
+    end
+
+    # Podpisové pole s viditelným widgetem na místě pole `qes`; appearance
+    # stream je součástí TBS, takže ho podpis kryje. Bez plochy pole
+    # vrací `nil` a `Signatures#add` vytvoří neviditelné pole.
+    def signature_field(pdf, field:, identity:, locale:, offsets: {})
+      page, rect = Qes::Stamp.placement(pdf, field, offsets:)
+      return if page.nil?
+
+      form = pdf.acro_form(create: true)
+      signature_field = form.create_signature_field(next_field_name(form))
+      Qes::Stamp.draw(signature_field.create_widget(page, Rect: rect), identity, locale:)
+      signature_field
+    end
+
+    # Stejné číslování polí jako `HexaPDF::DigitalSignature::Signatures#generate_field_name`.
+    def next_field_name(form)
+      indexes = form.each_field.map { |item| item.full_field_name.to_s[/\ASignature(\d+)/, 1].to_i }
+
+      "Signature#{indexes.max.to_i + 1}"
     end
 
     # Finální PDF posledního dokončeného podpisu téhož podepisujícího, jinak

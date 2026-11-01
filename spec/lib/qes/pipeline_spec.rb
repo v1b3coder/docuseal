@@ -50,6 +50,26 @@ RSpec.describe 'QES cryptographic pipeline' do
     expect(byte_range[2] + byte_range[3]).to eq(tbs_pdf.bytesize)
   end
 
+  it 'puts a visible signature widget with the stamp appearance at the qes field' do
+    tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
+    doc = HexaPDF::Document.new(io: StringIO.new(tbs_pdf))
+    widget = doc.acro_form.field_by_name('Signature1').each_widget.first
+    area = field['areas'][0]
+    page = widget[:P]
+
+    expect(widget[:Rect].left).to be_within(0.01).of(area['x'] * page.box.width)
+    expect(widget[:Rect].bottom).to be_within(0.01)
+                                        .of(page.box.height - (area['y'] * page.box.height) -
+                                              (area['h'] * page.box.height))
+    expect(widget[:Rect].width).to be_within(0.01).of(area['w'] * page.box.width)
+    expect(widget[:Rect].height).to be_within(0.01).of(area['h'] * page.box.height)
+    expect(widget[:F]).to eq(4)
+    expect(widget.appearance).to be_a(HexaPDF::Type::Form)
+    expect(widget.appearance[:BBox].width).to be_within(0.01).of(widget[:Rect].width)
+    expect(widget.appearance[:BBox].height).to be_within(0.01).of(widget[:Rect].height)
+    expect(widget.appearance.contents).not_to be_empty
+  end
+
   it 'produces signed attributes with signingTime and message-digest' do
     tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)
