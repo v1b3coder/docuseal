@@ -103,10 +103,23 @@ RSpec.describe Qes::CertificateInfo do
       expect(info.stamp_identity).to eq('name' => 'Jan Novak', 'email' => 'jan@firma.cz')
     end
 
-    it 'falls back to the full subject when the certificate has no CN' do
+    it 'builds the name from givenName and surname when the certificate has no CN' do
+      info = certificate_with_san('email:jan@firma.cz', subject: '/C=CZ/O=Test/GN=Jan/SN=Novak')
+
+      expect(info.stamp_identity).to eq('name' => 'Jan Novak', 'email' => 'jan@firma.cz')
+    end
+
+    it 'omits the name instead of putting the full subject in the stamp' do
       info = certificate_with_san('email:jan@firma.cz', subject: '/C=CZ/O=Test')
 
-      expect(info.stamp_identity).to eq('name' => '/C=CZ/O=Test', 'email' => 'jan@firma.cz')
+      expect(info.stamp_identity).to eq('email' => 'jan@firma.cz')
+    end
+
+    it 'falls back to the subject e-mail when the certificate has no SAN e-mail' do
+      info = certificate_with_san('DNS:example.com',
+                                 subject: '/C=CZ/CN=Jan Novak/emailAddress=jan@firma.cz')
+
+      expect(info.stamp_identity).to eq('name' => 'Jan Novak', 'email' => 'jan@firma.cz')
     end
   end
 
