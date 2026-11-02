@@ -5,23 +5,30 @@
 <% intact = report['intact'] == true %>
 <% compact = local_assigns.fetch(:compact, false) %>
 <% submission = session.submission %>
-<div class="<%= compact ? 'space-y-0.5 bg-base-200/80 rounded p-1 overflow-hidden' : 'space-y-1' %>" data-qes-summary="<%= session.id %>">
+<div class="<%= compact ? 'space-y-0 bg-base-200/80 rounded p-0.5 overflow-hidden text-[9px] leading-[10px]' : 'space-y-1' %>" data-qes-summary="<%= session.id %>">
   <div class="flex items-center space-x-1 font-medium">
     <%= svg_icon(intact ? 'circle_check' : 'x_circle',
-                 class: "w-5 h-5 #{intact ? 'text-green-500' : 'text-red-500'}") %>
+                 class: "#{compact ? 'w-2.5 h-2.5' : 'w-5 h-5'} #{intact ? 'text-green-500' : 'text-red-500'}") %>
     <span><%= t(intact ? 'qes.summary.valid' : 'qes.summary.invalid') %></span>
-    <span class="badge badge-sm"><%= session.level.to_s.upcase %></span>
+    <span class="<%= compact ? 'badge badge-xs' : 'badge badge-sm' %>"><%= session.level.to_s.upcase %></span>
   </div>
 
   <div class="flex items-center space-x-1">
-    <%= svg_icon('user', class: 'w-4 h-4') %>
-    <span dir="auto"><%= info['name'].presence || session.submitter.name %></span>
+    <%= svg_icon('user', class: compact ? 'w-2.5 h-2.5' : 'w-4 h-4') %>
+    <span class="truncate" dir="auto"><%= info['name'].presence || session.submitter.name %></span>
   </div>
 
   <% if info['email'].present? %>
     <div class="flex items-center space-x-1">
-      <%= svg_icon('mail', class: 'w-4 h-4') %>
-      <span dir="auto"><%= info['email'] %></span>
+      <%= svg_icon('mail', class: compact ? 'w-2.5 h-2.5' : 'w-4 h-4') %>
+      <span class="truncate" dir="auto"><%= info['email'] %></span>
+    </div>
+  <% end %>
+
+  <% if compact && (signed_at = session.completed_at || session.signing_time) %>
+    <div class="flex items-center space-x-1">
+      <%= svg_icon('clock', class: 'w-2.5 h-2.5') %>
+      <span><%= l(signed_at.in_time_zone(session.account.timezone), format: :long, locale: session.account.locale) %></span>
     </div>
   <% end %>
 

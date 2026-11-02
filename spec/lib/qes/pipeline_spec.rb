@@ -54,7 +54,9 @@ RSpec.describe 'QES cryptographic pipeline' do
     tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     doc = HexaPDF::Document.new(io: StringIO.new(tbs_pdf))
     widget = doc.acro_form.field_by_name('Signature1').each_widget.first
-    area = field['areas'][0]
+    # `Qes::Stamp.placement` zvětší plochu na efektivní pečeť; náhled i PDF
+    # používají stejnou plochu ze submission.
+    area = submitter.submission.reload.template_fields.find { |f| f['type'] == 'qes' }['areas'][0]
     page = widget[:P]
 
     expect(widget[:Rect].left).to be_within(0.01).of(area['x'] * page.box.width)

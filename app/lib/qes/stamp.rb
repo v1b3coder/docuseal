@@ -25,13 +25,14 @@ module Qes
     BADGE = [0xE5, 0xE7, 0xEB].freeze
     BADGE_TEXT = [0x37, 0x41, 0x51].freeze
     BADGE_WIDTH = 19
+    FONT_SIZE = 9.0
 
     module_function
 
     # Umístění pole `qes` v globálním indexu stránek: [page, Rect] v PDF
     # souřadnicích (`[llx, lly, urx, ury]`).
     # `nil` = pole do dokumentu nepatří (podmíněná příloha) nebo nemá plochu.
-    def placement(pdf, field, offsets: {})
+    def placement(pdf, field, identity: nil, locale: nil, level: nil, offsets: {})
       area = field&.dig('areas', 0)
       return if area.present? && offsets.present? && !offsets.key?(area['attachment_uuid'])
 
@@ -47,15 +48,59 @@ module Qes
       width = page.box.width
       height = page.box.height
       x = area.present? ? area['x'].to_f * width : 36.0
-      top = area.present? ? area['y'].to_f * height : height - 36.0 - MIN_HEIGHT
+      top = area.present? ? area['y'].to_f * height : nil
       w = area.present? ? area['w'].to_f * width : MIN_WIDTH
       h = area.present? ? area['h'].to_f * height : MIN_HEIGHT
+
+      if identity.present? && locale.present?
+        required_w, required_h = required_size(pdf, identity, locale:, level:)
+        w = [w, required_w].max
+        h = [h, required_h].max
+      end
+
+      # Levý horní roh zůstává; pečeť roste doprava a dolů. Když ani to
+      # na stránku nestačí, zmenší se (a `draw` zmenší font / zkrátí text).
+      if area.present?
+        w = [w, width - x].min
+        h = [h, height - top].min
+      else
+        w = [w, width - (2 * 36.0)].min
+        h = [h, height - (2 * 36.0)].min
+        top = height - 36.0 - h
+      end
 
       return unless w.positive? && h.positive?
 
       y = height - top - h
 
       [page, [x, y, x + w, y + h]]
+    end
+
+    # Minimální velikost pečeti pro text při 9 pt: šířka z nejdelšího řádku
+    # (ikona + text + badge), výška ze všech řádků. Menší plocha od zadavatele
+    # se zvětší doprava/dolů, aby se text vešel celý a čitelně.
+    def required_size(pdf, identity, locale:, level: nil)
+      rows = stamp_rows(identity, locale:)
+      return [MIN_WIDTH, MIN_HEIGHT] if rows.empty?
+
+      font = pdf.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
+      bold = pdf.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME, variant: :bold)
+      padding = [MIN_HEIGHT * 0.10, 2.5].max
+      widths = rows.map do |row|
+        case row[:kind]
+        when :title
+          FONT_SIZE + 2 + text_width(bold, row[:text], FONT_SIZE) +
+            (level.present? ? BADGE_WIDTH + 4 : 0)
+        when :name, :email
+          FONT_SIZE + 2 + text_width(font, row[:text], FONT_SIZE)
+        when :date
+          text_width(font, row[:text], FONT_SIZE * 0.85)
+        end
+      end
+      block_height = (1.25 * FONT_SIZE) + (1.3 * FONT_SIZE * (rows.size - 1))
+
+      [[MIN_WIDTH, (2 * padding) + widths.max].max,
+       [MIN_HEIGHT, (2 * padding) + block_height].max]
     end
 
     # Vykreslí pečeť do appearance streamu widgetu (form XObject s `/BBox`).
