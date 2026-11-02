@@ -8,7 +8,9 @@ module Qes
   # ne změna obsahu stránky.
   module Stamp
     MIN_WIDTH = 150
-    MIN_HEIGHT = 44
+    # Čtyři řádky (titulek, jméno, e-mail, datum) se do 44 pt nevešly bez
+    # ořezu; 58 pt drží 9pt font a stejný padding ze všech stran.
+    MIN_HEIGHT = 58
 
     module_function
 
@@ -71,8 +73,10 @@ module Qes
         canvas.font(font, size: font_size)
 
         line_height = font_size * 1.3
+        block_height = (1.25 * font_size) + (line_height * (lines.size - 1))
+        block_top = (h + block_height) / 2
         lines.each_with_index do |line, index|
-          baseline = h - padding - font_size - (line_height * index)
+          baseline = block_top - font_size - (line_height * index)
           next if baseline < 0
 
           canvas.text(fit_text(font, line, font_size, w - (2 * padding)), at: [padding, baseline])
@@ -91,11 +95,12 @@ module Qes
       end
     end
 
-    # Pečeť má 4 řádky (title, jméno, e-mail, datum); pevný font z výšky pole
+    # Pečeť má až 4 řádky (title, jméno, e-mail, datum); pevný font z výšky pole
     # by 4. řádek do malého pole nevešel a tiše se zahodil. Font se proto
-    # zmenší tak, aby se všechny řádky vešly (min 4 pt).
+    # zmenší tak, aby se všechny řádky vešly (min 4 pt) a zůstal stejný
+    # padding nahoře i dole.
     def font_size_for(height, line_count, padding)
-      fitting = (height - padding) / (1.25 + (1.3 * (line_count - 1)))
+      fitting = (height - (2 * padding)) / (1.25 + (1.3 * (line_count - 1)))
 
       [fitting, height * 0.22].min.clamp(4, 9).to_f
     end
