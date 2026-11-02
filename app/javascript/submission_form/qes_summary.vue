@@ -12,6 +12,7 @@
 // podepisujícího. Server ho vrací v `summary_html` z `GET /s/:slug/qes_sessions/:id`.
 export default {
   name: 'QesSummary',
+  emits: ['seal-area'],
   inject: ['baseUrl'],
   props: {
     value: { type: String, required: true },
@@ -47,6 +48,7 @@ export default {
         const payload = await response.json()
 
         this.html = response.ok ? (payload.summary_html || '') : ''
+        if (response.ok) this.$emit('seal-area', payload.seal_area)
       } catch {
         this.html = ''
       }

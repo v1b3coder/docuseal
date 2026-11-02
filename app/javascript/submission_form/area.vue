@@ -212,6 +212,7 @@
         v-if="modelValue"
         :value="modelValue"
         :submitter-slug="submitter.slug"
+        @seal-area="onSealArea"
       />
     </div>
     <div
@@ -397,7 +398,8 @@ export default {
   emits: ['update:model-value'],
   data () {
     return {
-      textOverflowChars: 0
+      textOverflowChars: 0,
+      sealArea: null
     }
   },
   computed: {
@@ -587,7 +589,7 @@ export default {
       return 1000 / 612.0
     },
     computedStyle () {
-      const { x, y, w, h } = this.area
+      const { x, y, w, h } = this.sealArea || this.area
 
       const style = {
         top: y * 100 + '%',
@@ -627,6 +629,9 @@ export default {
     })
   },
   methods: {
+    onSealArea (area) {
+      this.sealArea = area || null
+    },
     optionValue (option) {
       if (option) {
         if (option.value) {

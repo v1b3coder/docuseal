@@ -41,11 +41,16 @@ RSpec.describe 'QES views' do
     expect(response.body).to include('Jan Novák')
   end
 
-  it 'renders the compact QES summary in the document field' do
+  it 'renders the compact QES summary inside the document field area' do
     get submission_path(submitter.submission)
 
     expect(response.body).to include('bg-base-200/80')
     expect(response.body).not_to include("qes:#{session.id}")
+    # Zkrácený přehled musí být uvnitř `field-value` s plochou pole,
+    # jinak se vykreslí od 0,0 přes celou stránku.
+    expect(response.body).to match(
+      /<field-value[^>]*width: 30\.0%[^>]*>.*?data-qes-summary="#{session.id}"/m
+    )
   end
 
   it 'renders signing, completion, DocTS and validation times in the full summary' do
