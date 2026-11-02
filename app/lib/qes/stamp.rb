@@ -130,7 +130,11 @@ module Qes
         canvas.fill_color(*BACKGROUND)
         if w > 2 && h > 2
           radius = [2, (w - 2) / 2, (h - 2) / 2].min
+          # Pozadí je z 80 % neprůhledné, aby bylo vidět dokument pod pečetí;
+          # text a ikony zůstávají plné.
+          canvas.opacity(fill_alpha: 0.8)
           canvas.rectangle(1, 1, w - 2, h - 2, radius:).fill_stroke
+          canvas.opacity(fill_alpha: 1)
         end
 
         rows.each_with_index do |row, index|
