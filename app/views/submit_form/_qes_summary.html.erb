@@ -5,30 +5,33 @@
 <% intact = report['intact'] == true %>
 <% compact = local_assigns.fetch(:compact, false) %>
 <% submission = session.submission %>
-<div class="<%= compact ? 'w-full flex flex-col space-y-0 bg-base-200/80 rounded p-0.5 overflow-hidden text-[9px] leading-[10px]' : 'space-y-1' %>" data-qes-summary="<%= session.id %>">
-  <div class="flex items-center space-x-1 font-medium">
+<div class="<%= compact ? 'w-full flex flex-col space-y-0 bg-base-200/80 rounded p-[0.35cqmin] overflow-hidden text-[1.5cqmin] leading-[1.7cqmin]' : 'space-y-1' %>" data-qes-summary="<%= session.id %>">
+  <div class="flex items-center <%= compact ? 'gap-[0.35cqmin]' : 'space-x-1' %> font-medium">
     <%= svg_icon(intact ? 'circle_check' : 'x_circle',
-                 class: "#{compact ? 'w-2.5 h-2.5' : 'w-5 h-5'} #{intact ? 'text-green-500' : 'text-red-500'}") %>
-    <span><%= t(intact ? 'qes.summary.valid' : 'qes.summary.invalid') %></span>
-    <span class="<%= compact ? 'badge badge-xs' : 'badge badge-sm' %>"><%= session.level.to_s.upcase %></span>
+                 class: "#{compact ? 'w-[1.5cqmin] h-[1.5cqmin] shrink-0' : 'w-5 h-5'} #{intact ? 'text-green-500' : 'text-red-500'}") %>
+    <span class="<%= 'whitespace-nowrap' if compact %>"><%= t(intact ? 'qes.summary.valid' : 'qes.summary.invalid') %></span>
+    <% unless compact %>
+      <span class="badge badge-sm"><%= session.level.to_s.upcase %></span>
+    <% end %>
   </div>
 
-  <div class="flex items-center space-x-1">
-    <%= svg_icon('user', class: compact ? 'w-2.5 h-2.5' : 'w-4 h-4') %>
+  <div class="flex items-center <%= compact ? 'gap-[0.35cqmin]' : 'space-x-1' %>">
+    <%= svg_icon('user', class: compact ? 'w-[1.5cqmin] h-[1.5cqmin] shrink-0' : 'w-4 h-4') %>
     <span class="truncate" dir="auto"><%= info['name'].presence || session.submitter.name %></span>
   </div>
 
   <% if info['email'].present? %>
-    <div class="flex items-center space-x-1">
-      <%= svg_icon('mail', class: compact ? 'w-2.5 h-2.5' : 'w-4 h-4') %>
+    <div class="flex items-center <%= compact ? 'gap-[0.35cqmin]' : 'space-x-1' %>">
+      <%= svg_icon('mail', class: compact ? 'w-[1.5cqmin] h-[1.5cqmin] shrink-0' : 'w-4 h-4') %>
       <span class="truncate" dir="auto"><%= info['email'] %></span>
     </div>
   <% end %>
 
   <% if compact && (signed_at = session.completed_at || session.signing_time) %>
-    <div class="flex items-center space-x-1">
-      <%= svg_icon('clock', class: 'w-2.5 h-2.5') %>
-      <span><%= l(signed_at.in_time_zone(session.account.timezone), format: :long, locale: session.account.locale) %></span>
+    <div class="flex items-center gap-[0.35cqmin]">
+      <%= svg_icon('clock', class: 'w-[1.5cqmin] h-[1.5cqmin] shrink-0') %>
+      <span class="truncate"><%= l(signed_at.in_time_zone(session.account.timezone), format: :long, locale: session.account.locale) %></span>
+      <span class="ml-auto shrink-0 rounded bg-gray-200 px-[0.4cqmin] py-[0.1cqmin] text-[1.1cqmin] leading-[1.3cqmin] text-gray-700"><%= session.level.to_s.upcase %></span>
     </div>
   <% end %>
 
