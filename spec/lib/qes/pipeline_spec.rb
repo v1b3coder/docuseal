@@ -74,6 +74,23 @@ RSpec.describe 'QES cryptographic pipeline' do
     expect(widget.appearance.contents).not_to be_empty
   end
 
+  it 'creates the submission area when the qes field has none' do
+    fields = submitter.submission.template_fields.map do |item|
+      item['type'] == 'qes' ? item.merge('areas' => []) : item
+    end
+    submitter.submission.update!(template_fields: fields)
+    field = submitter.submission.template_fields.find { |f| f['type'] == 'qes' }
+
+    Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
+
+    area = submitter.submission.reload.template_fields.find { |f| f['type'] == 'qes' }['areas'][0]
+    page = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
+    doc = HexaPDF::Document.new(io: StringIO.new(page))
+    page_size = doc.pages[area['page']]
+    expect(area['w'] * page_size.box.width).to be >= Qes::Stamp::MIN_WIDTH - 0.01
+    expect(area['h'] * page_size.box.height).to be >= Qes::Stamp::MIN_HEIGHT - 0.01
+  end
+
   it 'produces signed attributes with signingTime and message-digest' do
     tbs_pdf = Qes::TbsDocument.build(submitter, field, identity: stamp_identity(pkcs))
     byte_range = Qes::TbsDocument.byte_range(tbs_pdf)

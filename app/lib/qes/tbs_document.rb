@@ -81,13 +81,18 @@ module Qes
       return unless submission&.persisted?
 
       fields = submission.template_fields || submission.template&.fields
-      area = field&.dig('areas', 0)
-      return if fields.blank? || area.blank?
+      return if fields.blank? || field.blank?
+
+      area = field.dig('areas', 0)
+      attachment_uuid = area&.dig('attachment_uuid') ||
+                        submission.schema_documents.first&.uuid ||
+                        submission.template&.schema&.first&.dig('attachment_uuid')
+      return if attachment_uuid.blank?
 
       page_width = page.box.width
       page_height = page.box.height
       x1, y1, x2, y2 = rect
-      updated_area = area.merge(
+      updated_area = (area || { 'page' => 0, 'attachment_uuid' => attachment_uuid }).merge(
         'x' => x1 / page_width,
         'y' => (page_height - y2) / page_height,
         'w' => (x2 - x1) / page_width,

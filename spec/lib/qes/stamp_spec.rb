@@ -124,6 +124,17 @@ RSpec.describe Qes::Stamp do
     expect(rect[1]).to be >= 0
   end
 
+  it 'shrinks a large field to the text size' do
+    pdf = HexaPDF::Document.new
+    pdf.pages.add([0, 0, 300, 300])
+    field = { 'areas' => [{ 'x' => 0.1, 'y' => 0.1, 'w' => 0.8, 'h' => 0.8, 'page' => 0 }] }
+
+    _page, rect = described_class.placement(pdf, field, identity:, locale: submitter.account.locale, level: 'ades')
+
+    expect(rect[2] - rect[0]).to be_within(0.01).of(described_class::MIN_WIDTH)
+    expect(rect[3] - rect[1]).to be_within(0.01).of(described_class::MIN_HEIGHT)
+  end
+
   it 'grows the seal width for a long e-mail' do
     pdf = HexaPDF::Document.new
     pdf.pages.add([0, 0, 1000, 300])
