@@ -9,10 +9,8 @@
   <div class="flex items-center <%= compact ? 'gap-[0.35cqmin]' : 'space-x-1' %> font-medium">
     <%= svg_icon(intact ? 'circle_check' : 'x_circle',
                  class: "#{compact ? 'w-[1.5cqmin] h-[1.5cqmin] shrink-0' : 'w-5 h-5'} #{intact ? 'text-green-500' : 'text-red-500'}") %>
-    <span class="<%= 'whitespace-nowrap' if compact %>"><%= t(intact ? 'qes.summary.valid' : 'qes.summary.invalid') %></span>
-    <% unless compact %>
-      <span class="badge badge-sm"><%= session.level.to_s.upcase %></span>
-    <% end %>
+    <span class="<%= 'truncate' if compact %>"><%= t(intact ? 'qes.summary.valid' : 'qes.summary.invalid') %></span>
+    <span class="<%= compact ? 'ml-auto shrink-0 rounded bg-gray-200 px-[0.4cqmin] py-[0.1cqmin] text-[1.1cqmin] leading-[1.3cqmin] text-gray-700' : 'badge badge-sm' %>"><%= session.level.to_s.upcase %></span>
   </div>
 
   <div class="flex items-center <%= compact ? 'gap-[0.35cqmin]' : 'space-x-1' %>">
@@ -31,7 +29,6 @@
     <div class="flex items-center gap-[0.35cqmin]">
       <%= svg_icon('clock', class: 'w-[1.5cqmin] h-[1.5cqmin] shrink-0') %>
       <span class="truncate"><%= l(signed_at.in_time_zone(session.account.timezone), format: :long, locale: session.account.locale) %></span>
-      <span class="ml-auto shrink-0 rounded bg-gray-200 px-[0.4cqmin] py-[0.1cqmin] text-[1.1cqmin] leading-[1.3cqmin] text-gray-700"><%= session.level.to_s.upcase %></span>
     </div>
   <% end %>
 
