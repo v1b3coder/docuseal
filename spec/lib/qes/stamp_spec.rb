@@ -62,6 +62,18 @@ RSpec.describe Qes::Stamp do
     expect(widget.appearance[:Resources][:Font]).not_to be_empty
   end
 
+  it 'draws the background with 80% fill opacity' do
+    pdf = HexaPDF::Document.new
+    pdf.pages.add([0, 0, 300, 300])
+    field = { 'areas' => [{ 'x' => 0.2, 'y' => 0.2, 'w' => 0.5, 'h' => 0.2, 'page' => 0 }] }
+    widget = stamp_widget(pdf, field)
+
+    described_class.draw(widget, identity, locale: submitter.account.locale)
+
+    states = widget.appearance[:Resources][:ExtGState].value.values
+    expect(states.map { |state| state[:ca] }).to include(0.8)
+  end
+
   it 'puts the certificate e-mail under the name' do
     identity = { 'name' => 'Jan Novák', 'email' => 'jan@firma.cz' }
 
