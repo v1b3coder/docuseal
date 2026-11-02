@@ -19,7 +19,7 @@ module Qes
       manifest ||= document_manifest(submitter)
       base = chained_base(submitter)
       offsets = page_offsets(submitter.submission, manifest:)
-      stamp = { field:, identity:, locale: submitter.account.locale, offsets: }
+      stamp = { field:, identity:, locale: submitter.account.locale, offsets:, submitter: }
 
       if base
         validate_page_count!(base, manifest)
@@ -61,15 +61,46 @@ module Qes
     # Podpisové pole s viditelným widgetem na místě pole `qes`; appearance
     # stream je součástí TBS, takže ho podpis kryje. Bez plochy pole
     # vrací `nil` a `Signatures#add` vytvoří neviditelné pole.
-    def signature_field(pdf, field:, identity:, locale:, offsets: {})
-      page, rect = Qes::Stamp.placement(pdf, field, offsets:)
+    def signature_field(pdf, field:, identity:, locale:, offsets: {}, submitter: nil)
+      level = field&.dig('preferences', 'level')
+      page, rect = Qes::Stamp.placement(pdf, field, identity:, locale:, level:, offsets:)
       return if page.nil?
+
+      update_area!(submitter, field, page, rect) if submitter
 
       form = pdf.acro_form(create: true)
       signature_field = form.create_signature_field(next_field_name(form))
-      Qes::Stamp.draw(signature_field.create_widget(page, Rect: rect), identity, locale:,
-                     level: field&.dig('preferences', 'level'))
+      Qes::Stamp.draw(signature_field.create_widget(page, Rect: rect), identity, locale:, level:)
       signature_field
+    end
+
+    # Pole `qes` v submissionu se zvětší na efektivní plochu pečeti, aby náhled
+    # (`submission.template_fields`) seděl s PDF. Levý horní roh zůstává.
+    def update_area!(submitter, field, page, rect)
+      submission = submitter.submission
+      return unless submission&.persisted?
+
+      fields = submission.template_fields || submission.template&.fields
+      area = field&.dig('areas', 0)
+      return if fields.blank? || area.blank?
+
+      page_width = page.box.width
+      page_height = page.box.height
+      x1, y1, x2, y2 = rect
+      updated_area = area.merge(
+        'x' => x1 / page_width,
+        'y' => (page_height - y2) / page_height,
+        'w' => (x2 - x1) / page_width,
+        'h' => (y2 - y1) / page_height
+      )
+      updated_fields = fields.map do |item|
+        next item unless item['uuid'] == field['uuid']
+
+        item.merge('areas' => [updated_area, *Array(item['areas']).drop(1)])
+      end
+      return if updated_fields == fields
+
+      submission.update_columns(template_fields: updated_fields)
     end
 
     # Stejné číslování polí jako `HexaPDF::DigitalSignature::Signatures#generate_field_name`.

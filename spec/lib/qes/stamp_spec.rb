@@ -96,4 +96,29 @@ RSpec.describe Qes::Stamp do
 
     expect(height - block_height).to be_within(0.1).of(2 * padding)
   end
+
+  it 'grows the field to fit the text and keeps the top-left corner' do
+    pdf = HexaPDF::Document.new
+    pdf.pages.add([0, 0, 300, 300])
+    field = { 'areas' => [{ 'x' => 0.1, 'y' => 0.8, 'w' => 0.1, 'h' => 0.03, 'page' => 0 }] }
+
+    page, rect = described_class.placement(pdf, field, identity:, locale: submitter.account.locale, level: 'ades')
+
+    expect(rect[0]).to be_within(0.01).of(30)
+    expect(rect[3]).to be_within(0.01).of(60)
+    expect(rect[2] - rect[0]).to be >= described_class::MIN_WIDTH
+    expect(rect[3] - rect[1]).to be >= described_class::MIN_HEIGHT
+    expect(rect[2]).to be <= page.box.width
+    expect(rect[1]).to be >= 0
+  end
+
+  it 'grows the seal width for a long e-mail' do
+    pdf = HexaPDF::Document.new
+    pdf.pages.add([0, 0, 1000, 300])
+    identity = { 'name' => 'Jan Novák', 'email' => 'very.long.address.for.testing@example.com' }
+
+    width, = described_class.required_size(pdf, identity, locale: submitter.account.locale, level: 'ades')
+
+    expect(width).to be > described_class::MIN_WIDTH
+  end
 end

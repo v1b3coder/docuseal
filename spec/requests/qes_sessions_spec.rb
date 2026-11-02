@@ -604,6 +604,10 @@ RSpec.describe 'Qes sessions API', type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.parsed_body['summary_html']).to include("data-qes-summary=\"#{session.id}\"")
     expect(response.parsed_body['summary_html']).to include(session.reload.certificate_info['name'])
+    expect(response.parsed_body['summary_html']).to include(
+      I18n.l(session.reload.completed_at.in_time_zone(session.account.timezone), format: :long,
+             locale: session.account.locale)
+    )
     # Plný subject certifikátu patří jen do plné karty, ne do zkrácené.
     expect(response.parsed_body['summary_html']).not_to include(pkcs.certificate.subject.to_s)
     # V poli dokumentu je zkrácená varianta (bez issuer/serial a auditu).
