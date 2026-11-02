@@ -6,11 +6,25 @@ module Qes
   # Widget (a tedy i pečeť) je součástí TBS PDF před podpisem, takže ho vidí
   # i analýza revizí (pyHanko): nový viditelný podpis je form filling,
   # ne změna obsahu stránky.
+  #
+  # Vzhled odpovídá kartě v náhledu (`submit_form/_qes_summary`): zelený check,
+  # titulek, badge úrovně, jméno a e-mail z certifikátu. Text „Signature is
+  # valid“ tu být nemůže: pečeť vzniká před podpisem, kdy platnost podpisu
+  # ještě neexistuje.
   module Stamp
     MIN_WIDTH = 150
     # Čtyři řádky (titulek, jméno, e-mail, datum) se do 44 pt nevešly bez
     # ořezu; 58 pt drží 9pt font a stejný padding ze všech stran.
     MIN_HEIGHT = 58
+
+    BACKGROUND = [0xF9, 0xFA, 0xFB].freeze
+    BORDER = [0xD1, 0xD5, 0xDB].freeze
+    TEXT = [0x11, 0x18, 0x27].freeze
+    MUTED = [0x6B, 0x72, 0x80].freeze
+    GREEN = [0x22, 0xC5, 0x5E].freeze
+    BADGE = [0xE5, 0xE7, 0xEB].freeze
+    BADGE_TEXT = [0x37, 0x41, 0x51].freeze
+    BADGE_WIDTH = 19
 
     module_function
 
@@ -46,60 +60,129 @@ module Qes
 
     # Vykreslí pečeť do appearance streamu widgetu (form XObject s `/BBox`).
     # Souřadnice jsou relativní k widgetu, ořez drží `BBox` i explicitní clip.
-    def draw(widget, identity, locale:)
-      lines = stamp_lines(identity, locale:)
-      return if lines.empty?
+    def draw(widget, identity, locale:, level: nil)
+      rows = stamp_rows(identity, locale:)
+      return if rows.empty?
 
       rect = widget[:Rect]
       w = rect.width
       h = rect.height
-      font = widget.document.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
+      font_name = Submissions::GenerateResultAttachments::FONT_NAME
       padding = [h * 0.10, 2.5].max
-      font_size = font_size_for(h, lines.size, padding)
+      font_size = font_size_for(h, rows.size, padding)
       line_height = font_size * 1.3
-      # Blok se sází na střed podle skutečného inkoustu řádků (font ascent
-      # nestačí), aby padding vyšel stejný nahoře i dole.
-      fragments = lines.map do |line|
-        HexaPDF::Layout::TextFragment.create(line, font:, font_size:)
-      end
-      top = fragments.first.exact_y_max
-      bottom = -fragments.last.exact_y_min
-      block_height = top + bottom + (line_height * (lines.size - 1))
-      block_top = (h + block_height) / 2
+      # Blok se sází na střed, aby padding vyšel stejný nahoře i dole
+      # i když cert nemá e-mail a řádků je méně.
+      block_height = (1.25 * font_size) + (line_height * (rows.size - 1))
+      baseline = ((h + block_height) / 2) - font_size
       canvas = widget.create_appearance.canvas
 
       canvas.save_graphics_state do
         # Ořez platí i pro text a tah okraje, včetně velmi malých polí.
         canvas.rectangle(0, 0, w, h).clip_path.end_path
         canvas.line_width(0.7)
-        canvas.stroke_color(0x29, 0x13, 0x34)
-        canvas.fill_color(0xF6, 0xF1, 0xF9)
+        canvas.stroke_color(*BORDER)
+        canvas.fill_color(*BACKGROUND)
         if w > 2 && h > 2
           radius = [2, (w - 2) / 2, (h - 2) / 2].min
           canvas.rectangle(1, 1, w - 2, h - 2, radius:).fill_stroke
         end
 
-        canvas.fill_color(0x29, 0x13, 0x34)
-        canvas.font(font, size: font_size)
-
-        lines.each_with_index do |line, index|
-          baseline = block_top - top - (line_height * index)
-          next if baseline < 0
-
-          canvas.text(fit_text(font, line, font_size, w - (2 * padding)), at: [padding, baseline])
+        rows.each_with_index do |row, index|
+          draw_row(canvas, row, w:, baseline: baseline - (line_height * index),
+                    font_name:, font_size:, padding:, level:)
         end
       end
     end
 
-    def stamp_lines(identity, locale:)
+    # Řádky pečeti v pořadí, v jakém se kreslí; prázdné (e-mail, jméno)
+    # se vynechají, aby pečeť nezůstala prázdná.
+    def stamp_rows(identity, locale:)
       I18n.with_locale(locale) do
         [
-          I18n.t('qes.stamp.title'),
-          identity['name'].to_s,
-          identity['email'].to_s,
-          I18n.l(Time.current.to_date, format: :long, locale: locale)
-        ].map(&:strip).compact_blank
+          { kind: :title, text: I18n.t('qes.stamp.title') },
+          { kind: :name, text: identity['name'].to_s },
+          { kind: :email, text: identity['email'].to_s },
+          { kind: :date, text: I18n.l(Time.current.to_date, format: :long, locale: locale) }
+        ].reject { |row| row[:text].blank? }
       end
+    end
+
+    def stamp_lines(identity, locale:)
+      stamp_rows(identity, locale:).map { |row| row[:text] }
+    end
+
+    def draw_row(canvas, row, w:, baseline:, font_name:, font_size:, padding:, level:)
+      icon = font_size
+      text_x = padding + icon + 2
+      center_y = baseline + (font_size * 0.32)
+
+      case row[:kind]
+      when :title
+        draw_check(canvas, padding + (icon / 2), center_y, icon * 0.42)
+        canvas.fill_color(*TEXT).font(font_name, size: font_size, variant: :bold)
+        max_width = w - text_x - padding - (level.present? ? BADGE_WIDTH + 4 : 0)
+        canvas.text(fit_text(canvas.font, row[:text], font_size, max_width), at: [text_x, baseline])
+        draw_level_badge(canvas, w:, baseline:, font_size:, padding:, font_name:, level:)
+      when :name
+        draw_person(canvas, padding + (icon / 2), center_y, icon * 0.42)
+        canvas.fill_color(*TEXT).font(font_name, size: font_size)
+        canvas.text(fit_text(canvas.font, row[:text], font_size, w - text_x - padding), at: [text_x, baseline])
+      when :email
+        draw_certificate(canvas, padding + (icon / 2), center_y, icon * 0.42)
+        canvas.fill_color(*MUTED).font(font_name, size: font_size)
+        canvas.text(fit_text(canvas.font, row[:text], font_size, w - text_x - padding), at: [text_x, baseline])
+      when :date
+        canvas.fill_color(*MUTED).font(font_name, size: font_size * 0.85)
+        canvas.text(row[:text], at: [padding, baseline])
+      end
+    end
+
+    # Zelený kruh s bílým checkem (stejný motiv jako `circle_check` v náhledu).
+    def draw_check(canvas, cx, cy, radius)
+      canvas.fill_color(*GREEN).circle(cx, cy, radius).fill
+      canvas.stroke_color(0xFFFFFF).line_width(radius * 0.32).line_cap_style(:round)
+      canvas.polyline(cx - (radius * 0.45), cy + (radius * 0.02),
+                      cx - (radius * 0.1), cy - (radius * 0.35),
+                      cx + (radius * 0.5), cy + (radius * 0.4)).stroke
+    end
+
+    # Ikonka postavy: hlava a ramena, jen tah v šedé.
+    def draw_person(canvas, cx, cy, radius)
+      canvas.stroke_color(0x6B, 0x72, 0x80).line_width(0.7)
+      canvas.circle(cx, cy + (radius * 0.42), radius * 0.34).stroke
+      canvas.polyline(cx - (radius * 0.72), cy - (radius * 0.72),
+                      cx - (radius * 0.34), cy - (radius * 0.2),
+                      cx + (radius * 0.34), cy - (radius * 0.2),
+                      cx + (radius * 0.72), cy - (radius * 0.72)).stroke
+    end
+
+    # Ikonka certifikátu: obdélník s dvěma řádky.
+    def draw_certificate(canvas, cx, cy, radius)
+      width = radius * 1.3
+      height = radius * 1.6
+      x = cx - (width / 2)
+      y = cy - (height / 2)
+
+      canvas.stroke_color(0x6B, 0x72, 0x80).line_width(0.7)
+      canvas.rectangle(x, y, width, height, radius: 0.8).stroke
+      canvas.line(x + 1, y + height - 2, x + width - 1, y + height - 2).stroke
+      canvas.line(x + 1, y + height - 3.8, x + width - 1, y + height - 3.8).stroke
+    end
+
+    # Badge úrovně (AdES/QES) vpravo v titulkovém řádku.
+    def draw_level_badge(canvas, w:, baseline:, font_size:, padding:, font_name:, level:)
+      return if level.blank?
+
+      label = level.to_s.upcase
+      badge_height = font_size + 1.5
+      x = w - padding - BADGE_WIDTH
+      y = baseline - 1.5
+
+      canvas.fill_color(*BADGE).rectangle(x, y, BADGE_WIDTH, badge_height, radius: 2).fill
+      canvas.fill_color(*BADGE_TEXT).font(font_name, size: 6.5)
+      text_x = x + ((BADGE_WIDTH - text_width(canvas.font, label, 6.5)) / 2)
+      canvas.text(label, at: [text_x, y + 2.2])
     end
 
     # Pečeť má až 4 řádky (title, jméno, e-mail, datum); pevný font z výšky pole

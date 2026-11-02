@@ -15,7 +15,9 @@ module Qes
       composer.text(I18n.t('qes.audit.title'), font_size: 16, padding: [0, 0, 15, 0])
 
       sessions.each do |session|
-        composer.text(session.submitter.name.to_s, font_size: 12, padding: [0, 0, 6, 0])
+        identity = session.certificate_info || {}
+        composer.text((identity['name'].presence || session.submitter.name).to_s,
+                      font_size: 12, padding: [0, 0, 6, 0])
         composer.table(rows_for(session), cell_style: { padding: [0, 0, 6, 0], border: { width: 0 } })
         composer.text("\n")
       end

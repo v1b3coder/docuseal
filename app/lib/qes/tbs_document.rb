@@ -67,7 +67,8 @@ module Qes
 
       form = pdf.acro_form(create: true)
       signature_field = form.create_signature_field(next_field_name(form))
-      Qes::Stamp.draw(signature_field.create_widget(page, Rect: rect), identity, locale:)
+      Qes::Stamp.draw(signature_field.create_widget(page, Rect: rect), identity, locale:,
+                     level: field&.dig('preferences', 'level'))
       signature_field
     end
 

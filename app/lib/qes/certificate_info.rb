@@ -130,24 +130,37 @@ module Qes
     end
 
     def email
-      email_addresses.first
+      email_addresses.first.presence || subject_email
     end
 
-    # Jméno do pečeti: CN z předmětu certifikátu. Kvalifikované certy CN mají;
-    # kdyby chyběl, použije se celý předmět, aby pečeť nebyla prázdná.
-    def common_name
-      certificate.subject.to_a.find { |name, _, _| name == 'CN' }&.at(1)
+    # E-mail v předmětu certifikátu (`emailAddress`), když v SAN chybí.
+    def subject_email
+      certificate.subject.to_a.assoc('emailAddress')&.at(1)
+    end
+
+    # Jméno do pečeti: CN, jinak givenName + surname. Celý předmět se
+    # nepoužívá, aby se v pečeti neobjevily atributy certifikátu.
+    def display_name
+      attributes = certificate.subject.to_a
+      common_name = attributes.assoc('CN')&.at(1)
+      return common_name if common_name.present?
+
+      given_name = attributes.assoc('GN')&.at(1) || attributes.assoc('givenName')&.at(1)
+      surname = attributes.assoc('SN')&.at(1) || attributes.assoc('surname')&.at(1)
+
+      [given_name, surname].compact_blank.join(' ').presence
     end
 
     # Identita, kterou nese viditelná pečeť v TBS. Ukládá se do metadat TBS
     # a `complete!` po podpisu ověří, že sedí s certifikátem podpisu.
     def stamp_identity
-      { 'name' => common_name.presence || certificate.subject.to_s, 'email' => email }.compact
+      { 'name' => display_name, 'email' => email }.compact
     end
 
     def to_h
       {
         subject: certificate.subject.to_s,
+        name: display_name,
         issuer: certificate.issuer.to_s,
         serial: serial_hex,
         not_before: certificate.not_before.utc.iso8601,
