@@ -59,6 +59,8 @@ RSpec.describe 'QES cryptographic pipeline' do
     area = submitter.submission.reload.template_fields.find { |f| f['type'] == 'qes' }['areas'][0]
     page = widget[:P]
 
+    expect(area['w'] * page.box.width).to be >= Qes::Stamp::MIN_WIDTH - 0.01
+    expect(area['h'] * page.box.height).to be >= Qes::Stamp::MIN_HEIGHT - 0.01
     expect(widget[:Rect].left).to be_within(0.01).of(area['x'] * page.box.width)
     expect(widget[:Rect].bottom).to be_within(0.01)
                                         .of(page.box.height - (area['y'] * page.box.height) -
