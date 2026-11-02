@@ -23,7 +23,7 @@ RSpec.describe Qes::Stamp do
     signature_field.create_widget(page, Rect: rect)
   end
 
-  [[30, 16], [1, 1], [150, 44]].each do |width, height|
+  [[30, 16], [1, 1], [150, 44], [150, 58]].each do |width, height|
     it "clips every painted pixel to a #{width} by #{height} field" do
       pdf = HexaPDF::Document.new
       pdf.pages.add([0, 0, 300, 300])
@@ -85,6 +85,15 @@ RSpec.describe Qes::Stamp do
   it 'keeps the fixed font for three lines and shrinks it for four' do
     expect(described_class.font_size_for(44, 3, 4.4)).to eq(9)
     expect(described_class.font_size_for(44, 4, 4.4)).to be < 9
-    expect(described_class.font_size_for(50, 4, 5)).to be > 8
+    expect(described_class.font_size_for(described_class::MIN_HEIGHT, 4, 5.8)).to eq(9)
+  end
+
+  it 'reserves the same padding at the top and bottom for four lines' do
+    height = described_class::MIN_HEIGHT
+    padding = height * 0.10
+    font_size = described_class.font_size_for(height, 4, padding)
+    block_height = (1.25 * font_size) + (1.3 * font_size * 3)
+
+    expect(height - block_height).to be_within(0.1).of(2 * padding)
   end
 end
