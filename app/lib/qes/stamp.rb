@@ -53,13 +53,13 @@ module Qes
       h = area.present? ? area['h'].to_f * height : MIN_HEIGHT
 
       if identity.present? && locale.present?
-        required_w, required_h = required_size(pdf, identity, locale:, level:)
-        w = [w, required_w].max
-        h = [h, required_h].max
+        # Plocha od zadavatele určuje jen levý horní roh; velikost pečeti
+        # se počítá z textu, aby se vešla celá a čitelně.
+        w, h = required_size(pdf, identity, locale:, level:)
       end
 
-      # Levý horní roh zůstává; pečeť roste doprava a dolů. Když ani to
-      # na stránku nestačí, zmenší se (a `draw` zmenší font / zkrátí text).
+      # Levý horní roh zůstává; velikost je z textu. Když se pečeť na
+      # stránku nevejde, zmenší se (a `draw` zmenší font / zkrátí text).
       if area.present?
         w = [w, width - x].min
         h = [h, height - top].min
