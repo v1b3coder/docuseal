@@ -204,6 +204,7 @@ module Qes
 
       {
         seal_state: session.seal_state,
+        seal_area: session.field&.dig('areas', 0),
         doc_timestamp_state: session.doc_timestamp_state,
         # Prohlížeč potřebuje zmrazené hodnoty ostatních polí, aby po
         # dokončení neposlal změněné {{name}}/datum/vzorce (N6).
