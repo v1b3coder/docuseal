@@ -56,6 +56,16 @@ module Qes
       font = widget.document.fonts.add(Submissions::GenerateResultAttachments::FONT_NAME)
       padding = [h * 0.10, 2.5].max
       font_size = font_size_for(h, lines.size, padding)
+      line_height = font_size * 1.3
+      # Blok se sází na střed podle skutečného inkoustu řádků (font ascent
+      # nestačí), aby padding vyšel stejný nahoře i dole.
+      fragments = lines.map do |line|
+        HexaPDF::Layout::TextFragment.create(line, font:, font_size:)
+      end
+      top = fragments.first.exact_y_max
+      bottom = -fragments.last.exact_y_min
+      block_height = top + bottom + (line_height * (lines.size - 1))
+      block_top = (h + block_height) / 2
       canvas = widget.create_appearance.canvas
 
       canvas.save_graphics_state do
@@ -72,11 +82,8 @@ module Qes
         canvas.fill_color(0x29, 0x13, 0x34)
         canvas.font(font, size: font_size)
 
-        line_height = font_size * 1.3
-        block_height = (1.25 * font_size) + (line_height * (lines.size - 1))
-        block_top = (h + block_height) / 2
         lines.each_with_index do |line, index|
-          baseline = block_top - font_size - (line_height * index)
+          baseline = block_top - top - (line_height * index)
           next if baseline < 0
 
           canvas.text(fit_text(font, line, font_size, w - (2 * padding)), at: [padding, baseline])
