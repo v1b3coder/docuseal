@@ -123,7 +123,7 @@ module Qes
       return [] if extension.blank?
 
       OpenSSL::ASN1.decode(extension.value_der).value.filter_map do |name|
-        name.value if name.tag_class == :CONTEXT_SPECIFIC && name.tag == SAN_RFC822_NAME
+        Qes::CertificateName.utf8(name.value) if name.tag_class == :CONTEXT_SPECIFIC && name.tag == SAN_RFC822_NAME
       end
     rescue OpenSSL::ASN1::ASN1Error
       []
@@ -133,20 +133,45 @@ module Qes
       email_addresses.first.presence || subject_email
     end
 
+    # Všechny e-maily podepisujícího: SAN rfc822Name a `emailAddress`
+    # v předmětu, bez duplicit (certifikát jich může mít víc).
+    def emails
+      (email_addresses + [subject_email]).compact_blank.uniq
+    end
+
     # E-mail v předmětu certifikátu (`emailAddress`), když v SAN chybí.
     def subject_email
-      certificate.subject.to_a.assoc('emailAddress')&.at(1)
+      Qes::CertificateName.value(certificate.subject.to_a, 'emailAddress')
+    end
+
+    # Lidsky čitelný název vydavatele (autorita, která certifikát vydala):
+    # CN, OU, O, C od nejspecifičtějšího; `to_s` dává "/C=CZ/…", což do UI
+    # nepatří. Hodnoty s čárkou („Česká pošta, s.p.“) oddělujeme „ · “.
+    def issuer_name
+      Qes::CertificateName.display(certificate.issuer, Qes::CertificateName::ISSUER_ORDER)
+    end
+
+    # Technický název předmětu s typy atributů a UTF-8 hodnotami pro
+    # technické detaily; `to_s` escapuje non-ASCII bajty jako „\xC4\x8C“.
+    def subject_text
+      Qes::CertificateName.format(certificate.subject)
+    end
+
+    def issuer_text
+      Qes::CertificateName.format(certificate.issuer)
     end
 
     # Jméno do pečeti: CN, jinak givenName + surname. Celý předmět se
     # nepoužívá, aby se v pečeti neobjevily atributy certifikátu.
     def display_name
       attributes = certificate.subject.to_a
-      common_name = attributes.assoc('CN')&.at(1)
+      common_name = Qes::CertificateName.value(attributes, 'CN')
       return common_name if common_name.present?
 
-      given_name = attributes.assoc('GN')&.at(1) || attributes.assoc('givenName')&.at(1)
-      surname = attributes.assoc('SN')&.at(1) || attributes.assoc('surname')&.at(1)
+      given_name = Qes::CertificateName.value(attributes, 'GN') ||
+                    Qes::CertificateName.value(attributes, 'givenName')
+      surname = Qes::CertificateName.value(attributes, 'SN') ||
+                Qes::CertificateName.value(attributes, 'surname')
 
       [given_name, surname].compact_blank.join(' ').presence
     end

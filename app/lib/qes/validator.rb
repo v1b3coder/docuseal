@@ -58,7 +58,7 @@ module Qes
         signatures: results,
         pdfium:,
         inspection:,
-        trusted_roots: trust_roots.map { |cert| cert.subject.to_s },
+        trusted_roots: trust_roots.map { |cert| Qes::CertificateName.format(cert.subject) },
         validated_at: at.utc.iso8601
       }
     end
@@ -77,7 +77,8 @@ module Qes
       sub_filter = signature[:SubFilter].to_s
 
       result = { sub_filter:, kind: kind_for(sub_filter), qes: sub_filter == 'ETSI.CAdES.detached',
-                 signing_time: nil, common_name: nil, subject: nil, issuer: nil, serial: nil,
+                 signing_time: nil, common_name: nil, name: nil, emails: [], issuer_name: nil,
+                 subject: nil, issuer: nil, serial: nil,
                  not_before: nil, not_after: nil, chain: [], level: 'none',
                  intact: false, trusted: false, tsa_trusted: false, coverage: 'none',
                  verification_scope: historical ? 'integrity' : 'full', timestamp_time: nil,
@@ -88,16 +89,22 @@ module Qes
       data = Qes::TbsDocument.signed_data(io, byte_range)
       pkcs7 = OpenSSL::PKCS7.new(contents)
       signer_cert = VerifyPdfSignature.signer_certificate(pkcs7)
+      info = signer_cert && Qes::CertificateInfo.new(signer_cert)
 
       result[:common_name] = common_name(signer_cert)
-      result[:subject] = signer_cert&.subject&.to_s
-      result[:issuer] = signer_cert&.issuer&.to_s
+      # Lidsky citelna metadata certifikatu pro UI (docs/16 § 4.2);
+      # `subject` a `issuer` zustavaji raw pro technicke detaily.
+      result[:name] = info&.display_name
+      result[:emails] = info&.emails || []
+      result[:issuer_name] = info&.issuer_name
+      result[:subject] = info&.subject_text
+      result[:issuer] = info&.issuer_text
       result[:serial] = signer_cert ? "0x#{signer_cert.serial.to_s(16).upcase}" : nil
       result[:not_before] = signer_cert&.not_before&.utc&.iso8601
       result[:not_after] = signer_cert&.not_after&.utc&.iso8601
-      result[:chain] = pkcs7.certificates&.map { |cert| cert.subject.to_s } || []
+      result[:chain] = pkcs7.certificates&.map { |cert| Qes::CertificateName.format(cert.subject) } || []
       result[:signing_time] = signing_time(pkcs7)
-      result[:level] = signer_cert ? Qes::CertificateInfo.new(signer_cert).level : 'none'
+      result[:level] = info ? info.level : 'none'
       result[:intact] = verify_cms(pkcs7, data, trust_roots, sub_filter)
       # DocTS i podpisové razítko jsou ověřené TSA časy; min je konzervativní
       # historický čas, nikoli neověřený `signingTime` od podepisujícího.
@@ -117,7 +124,7 @@ module Qes
       # self-signed certifikát stal sám sobě trust rootem.
       chain = pkcs7.certificates&.reject { |cert| cert.to_der == signer_cert&.to_der } || []
       result[:trusted] = result[:intact] && result[:qes] &&
-                         signer_cert && Qes::CertificateInfo.new(signer_cert).signing_leaf? &&
+                         info && info.signing_leaf? &&
                          trusted_chain?(signer_cert, chain, trust_roots, at: validation_time)
       if result[:kind] == 'seal'
         result[:trusted] = result[:intact] && VerifyPdfSignature.trusted_certificate?(pkcs7, trusted_certs)

@@ -18,6 +18,31 @@ RSpec.describe Qes::Verifier do
     output.string
   end
 
+  # Podepisující certifikát s vícero SAN e-maily a čitelným vydavatelem.
+  # Jméno je ASCII: pečeť se kreslí přímo z certifikátu a `to_a` vrací
+  # hodnoty jako BINARY (mimo produkci, kde identita projde JSONem).
+  def pkcs12_with_emails
+    key = OpenSSL::PKey::RSA.new(2048)
+    certificate = OpenSSL::X509::Certificate.new
+    certificate.version = 2
+    certificate.serial = OpenSSL::BN.rand(64)
+    certificate.subject = OpenSSL::X509::Name.parse('/C=CZ/O=Firma, s.r.o./CN=Jan Novak')
+    certificate.issuer = OpenSSL::X509::Name.parse('/C=CZ/O=Česká pošta, s.p./CN=Test Root CA')
+    certificate.public_key = key.public_key
+    certificate.not_before = Time.current - 60
+    certificate.not_after = 1.day.from_now
+
+    factory = OpenSSL::X509::ExtensionFactory.new
+    factory.subject_certificate = certificate
+    factory.issuer_certificate = certificate
+    certificate.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
+    certificate.add_extension(factory.create_extension('subjectAltName',
+                                                      'email:jan@firma.cz,email:druhy@firma.cz', false))
+    certificate.sign(key, OpenSSL::Digest.new('SHA256'))
+
+    OpenSSL::PKCS12.create('test', 'test', key, certificate)
+  end
+
   it 'returns a valid report for an AdES signature' do
     report = described_class.call(pdf, name: 'contract.pdf')
 
@@ -36,6 +61,27 @@ RSpec.describe Qes::Verifier do
     expect(report[:signatures].first[:issuer]).to be_present
     expect(report[:signatures].first[:chain]).to be_present
     expect(report[:file][:sha256]).to eq(Digest::SHA256.hexdigest(pdf))
+  end
+
+  it 'returns readable certificate metadata for the signer' do
+    signature = described_class.call(pdf, name: 'contract.pdf')[:signatures].first
+
+    expect(signature[:name]).to eq('signer-ades')
+    expect(signature[:emails]).to eq([])
+    expect(signature[:issuer_name]).to eq('Dokulachtan Test Root CA · Dokulachtan Test · CZ')
+    expect(signature[:subject]).to start_with('C=CZ')
+    expect(signature[:issuer]).to start_with('C=CZ')
+    expect(signature[:chain].first).to include('signer-ades')
+    expect(signature[:chain].first).not_to include('\x')
+  end
+
+  it 'returns all certificate e-mails' do
+    signed = QesHelpers.signed_pdf(pkcs: pkcs12_with_emails)
+    signature = described_class.call(signed, name: 'contract.pdf')[:signatures].first
+
+    expect(signature[:name]).to eq('Jan Novak')
+    expect(signature[:emails]).to eq(['jan@firma.cz', 'druhy@firma.cz'])
+    expect(signature[:issuer_name]).to eq('Test Root CA · Česká pošta, s.p. · CZ')
   end
 
   it 'returns an indeterminate inspection and invalid verdict on parser failure' do
