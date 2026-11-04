@@ -19,14 +19,12 @@ RSpec.describe Qes::Verifier do
   end
 
   # Podepisující certifikát s vícero SAN e-maily a čitelným vydavatelem.
-  # Jméno je ASCII: pečeť se kreslí přímo z certifikátu a `to_a` vrací
-  # hodnoty jako BINARY (mimo produkci, kde identita projde JSONem).
   def pkcs12_with_emails
     key = OpenSSL::PKey::RSA.new(2048)
     certificate = OpenSSL::X509::Certificate.new
     certificate.version = 2
     certificate.serial = OpenSSL::BN.rand(64)
-    certificate.subject = OpenSSL::X509::Name.parse('/C=CZ/O=Firma, s.r.o./CN=Jan Novak')
+    certificate.subject = OpenSSL::X509::Name.parse('/C=CZ/O=Firma, s.r.o./CN=Jan Novák')
     certificate.issuer = OpenSSL::X509::Name.parse('/C=CZ/O=Česká pošta, s.p./CN=Test Root CA')
     certificate.public_key = key.public_key
     certificate.not_before = Time.current - 60
@@ -79,7 +77,8 @@ RSpec.describe Qes::Verifier do
     signed = QesHelpers.signed_pdf(pkcs: pkcs12_with_emails)
     signature = described_class.call(signed, name: 'contract.pdf')[:signatures].first
 
-    expect(signature[:name]).to eq('Jan Novak')
+    expect(signature[:name]).to eq('Jan Novák')
+    expect(signature[:common_name]).to eq('Jan Novák')
     expect(signature[:emails]).to eq(['jan@firma.cz', 'druhy@firma.cz'])
     expect(signature[:issuer_name]).to eq('Test Root CA · Česká pošta, s.p. · CZ')
   end

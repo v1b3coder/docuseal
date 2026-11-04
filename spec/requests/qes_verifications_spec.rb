@@ -41,7 +41,7 @@ RSpec.describe 'QES verification API', type: :request do
       expect(body['revocation']).to eq('not_checked')
       expect(body['stored']).to be false
       expect(body['signatures'].size).to eq(1)
-      expect(body['signatures'].first).to include('kind' => 'qes', 'level' => 'ades',
+      expect(body['signatures'].first).to include('kind' => 'qes', 'level' => 'ades', 'common_name' => 'signer-ades',
                                                  'intact' => true, 'trusted' => true)
       expect(body['signatures'].first['name']).to eq('signer-ades')
       expect(body['signatures'].first['emails']).to eq([])
