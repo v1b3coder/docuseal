@@ -54,28 +54,28 @@ RSpec.describe Qes::CertificateInfo do
     end
   end
 
+  def certificate_with_san(*names, subject: '/C=CZ/O=Test/CN=Jan Novak')
+    key = OpenSSL::PKey::RSA.new(2048)
+    cert = OpenSSL::X509::Certificate.new
+    cert.version = 2
+    cert.serial = OpenSSL::BN.rand(64)
+    cert.subject = OpenSSL::X509::Name.parse(subject)
+    cert.issuer = cert.subject
+    cert.public_key = key.public_key
+    cert.not_before = Time.current - 60
+    cert.not_after = 1.day.from_now
+
+    factory = OpenSSL::X509::ExtensionFactory.new
+    factory.subject_certificate = cert
+    factory.issuer_certificate = cert
+    cert.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
+    cert.add_extension(factory.create_extension('subjectAltName', names.join(','), false)) if names.any?
+    cert.sign(key, OpenSSL::Digest.new('SHA256'))
+
+    described_class.parse(cert.to_der)
+  end
+
   describe 'certificate e-mail' do
-    def certificate_with_san(*names, subject: '/C=CZ/O=Test/CN=Jan Novak')
-      key = OpenSSL::PKey::RSA.new(2048)
-      cert = OpenSSL::X509::Certificate.new
-      cert.version = 2
-      cert.serial = OpenSSL::BN.rand(64)
-      cert.subject = OpenSSL::X509::Name.parse(subject)
-      cert.issuer = cert.subject
-      cert.public_key = key.public_key
-      cert.not_before = Time.current - 60
-      cert.not_after = 1.day.from_now
-
-      factory = OpenSSL::X509::ExtensionFactory.new
-      factory.subject_certificate = cert
-      factory.issuer_certificate = cert
-      cert.add_extension(factory.create_extension('keyUsage', 'digitalSignature', true))
-      cert.add_extension(factory.create_extension('subjectAltName', names.join(','), false)) if names.any?
-      cert.sign(key, OpenSSL::Digest.new('SHA256'))
-
-      described_class.parse(cert.to_der)
-    end
-
     it 'returns the first SAN e-mail when the certificate has several' do
       info = certificate_with_san('email:jan@firma.cz', 'email:druhy@firma.cz')
 
@@ -120,6 +120,49 @@ RSpec.describe Qes::CertificateInfo do
                                  subject: '/C=CZ/CN=Jan Novak/emailAddress=jan@firma.cz')
 
       expect(info.stamp_identity).to eq('name' => 'Jan Novak', 'email' => 'jan@firma.cz')
+    end
+  end
+
+  describe 'certificate e-mails' do
+    it 'returns all SAN e-mails and the subject e-mail without duplicates' do
+      info = certificate_with_san('email:jan@firma.cz', 'email:druhy@firma.cz',
+                                 subject: '/C=CZ/CN=Jan Novak/emailAddress=jan@firma.cz')
+
+      expect(info.emails).to eq(['jan@firma.cz', 'druhy@firma.cz'])
+    end
+
+    it 'falls back to the subject e-mail' do
+      info = certificate_with_san('DNS:example.com',
+                                 subject: '/C=CZ/CN=Jan Novak/emailAddress=jan@firma.cz')
+
+      expect(info.emails).to eq(['jan@firma.cz'])
+    end
+
+    it 'returns no e-mails when the certificate has none' do
+      expect(certificate_with_san.emails).to eq([])
+    end
+  end
+
+  describe 'readable issuer name' do
+    it 'formats the issuer from the most specific attribute' do
+      info = certificate_with_san(
+        subject: '/C=CZ/O=Česká pošta, s.p./OU=PostSignum Qualified CA 4/CN=PostSignum Qualified CA 4'
+      )
+
+      expect(info.issuer_name).to eq('PostSignum Qualified CA 4 · Česká pošta, s.p. · CZ')
+    end
+
+    it 'keeps a value with a comma intact' do
+      info = certificate_with_san(subject: '/C=CZ/O=Česká pošta, s.p./CN=PostSignum Root QCA 4')
+
+      expect(info.issuer_name).to eq('PostSignum Root QCA 4 · Česká pošta, s.p. · CZ')
+    end
+
+    it 'never returns the raw "/C=CZ/…" format' do
+      info = certificate_with_san
+
+      expect(info.issuer_name).to eq('Jan Novak · Test · CZ')
+      expect(info.issuer_name).not_to include('=')
     end
   end
 

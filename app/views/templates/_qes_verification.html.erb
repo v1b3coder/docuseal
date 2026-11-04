@@ -84,7 +84,9 @@
             <% kind = signature['kind'].to_s %>
             <% intact = signature['intact'] == true %>
             <% trusted = signature['trusted'] == true %>
-            <% name = signature['common_name'].presence || t("qes.verification.names.#{kind}", default: t('qes.verification.names.other')) %>
+            <% name = signature['name'].presence || signature['common_name'].presence || t("qes.verification.names.#{kind}", default: t('qes.verification.names.other')) %>
+            <% emails = Array(signature['emails']).compact_blank %>
+            <% issuer = signature['issuer_name'].presence || signature['issuer'] %>
             <div class="rounded border border-base-300 bg-base-100 p-2">
               <div class="flex flex-wrap items-center gap-2">
                 <%= svg_icon(intact ? 'circle_check' : 'x_circle', class: "w-5 h-5 #{intact ? 'text-green-500' : 'text-red-500'}") %>
@@ -99,8 +101,11 @@
                 <% end %>
               </div>
               <div class="mt-1 space-y-0.5 text-xs opacity-60">
-                <% if signature['issuer'].present? %>
-                  <div><%= t('qes.audit.certificate_issuer') %>: <span dir="auto"><%= signature['issuer'] %></span></div>
+                <% if issuer.present? %>
+                  <div><%= t('qes.audit.certificate_issuer') %>: <span dir="auto"><%= issuer %></span></div>
+                <% end %>
+                <% if emails.any? %>
+                  <div><%= t('qes.audit.certificate_email') %>: <span dir="auto"><%= emails.join(', ') %></span></div>
                 <% end %>
                 <% if signature['signing_time'].present? %>
                   <div><%= t('qes.audit.signed_at') %>: <%= format_time.call(signature['signing_time']) %></div>

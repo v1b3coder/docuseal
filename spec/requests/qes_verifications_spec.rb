@@ -43,6 +43,10 @@ RSpec.describe 'QES verification API', type: :request do
       expect(body['signatures'].size).to eq(1)
       expect(body['signatures'].first).to include('kind' => 'qes', 'level' => 'ades',
                                                  'intact' => true, 'trusted' => true)
+      expect(body['signatures'].first['name']).to eq('signer-ades')
+      expect(body['signatures'].first['emails']).to eq([])
+      expect(body['signatures'].first['issuer_name'])
+        .to eq('Dokulachtan Test Root CA · Dokulachtan Test · CZ')
       expect(body['file']['name']).to eq('contract.pdf')
       expect(body['file']['sha256']).to eq(Digest::SHA256.hexdigest(pdf))
     end
@@ -209,6 +213,9 @@ RSpec.describe 'QES verification API', type: :request do
             'trusted' => true,
             'coverage' => 'full',
             'common_name' => 'Jan Novák',
+            'name' => 'Jan Novák',
+            'emails' => ['jan@firma.cz'],
+            'issuer_name' => 'PostSignum Qualified CA 4 · Česká pošta, s.p. · CZ',
             'subject' => 'CN=Jan Novák, O=Firma s.r.o., C=CZ',
             'issuer' => 'CN=PostSignum Qualified CA 4, O=PostSignum, C=CZ',
             'serial' => '0x1A2B3C',
@@ -242,6 +249,9 @@ RSpec.describe 'QES verification API', type: :request do
       expect(response.body).to include('PDF verification')
       expect(response.body).to include('Signature is valid')
       expect(response.body).to include('Jan Novák')
+      expect(response.body).to include('jan@firma.cz')
+      expect(response.body).to include('PostSignum Qualified CA 4 · Česká pošta, s.p. · CZ')
+      expect(response.body).not_to include('Qualified CA 4, O=PostSignum')
       expect(response.body).to include('Download PDF')
       expect(response.body).to include('Preview PDF')
     end
