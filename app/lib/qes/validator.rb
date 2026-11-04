@@ -91,17 +91,7 @@ module Qes
       signer_cert = VerifyPdfSignature.signer_certificate(pkcs7)
       info = signer_cert && Qes::CertificateInfo.new(signer_cert)
 
-      result[:common_name] = common_name(signer_cert)
-      # Lidsky citelna metadata certifikatu pro UI (docs/16 § 4.2);
-      # `subject` a `issuer` zustavaji raw pro technicke detaily.
-      result[:name] = info&.display_name
-      result[:emails] = info&.emails || []
-      result[:issuer_name] = info&.issuer_name
-      result[:subject] = info&.subject_text
-      result[:issuer] = info&.issuer_text
-      result[:serial] = signer_cert ? "0x#{signer_cert.serial.to_s(16).upcase}" : nil
-      result[:not_before] = signer_cert&.not_before&.utc&.iso8601
-      result[:not_after] = signer_cert&.not_after&.utc&.iso8601
+      certificate_metadata(result, signer_cert, info)
       result[:chain] = pkcs7.certificates&.map { |cert| Qes::CertificateName.format(cert.subject) } || []
       result[:signing_time] = signing_time(pkcs7)
       result[:level] = info ? info.level : 'none'
@@ -192,7 +182,21 @@ module Qes
     def common_name(certificate)
       return if certificate.nil?
 
-      certificate.subject.to_a.assoc('CN')&.dig(1)
+      Qes::CertificateName.value(certificate.subject.to_a, 'CN')
+    end
+
+    # Metadata certifikátu podepisujícího (SPEC § 7.5, docs/16 § 4.2): jméno,
+    # e-maily a vydavatel lidsky, plné DN s UTF-8 pro technické detaily.
+    def certificate_metadata(result, signer_cert, info)
+      result[:common_name] = common_name(signer_cert)
+      result[:name] = info&.display_name
+      result[:emails] = info&.emails || []
+      result[:issuer_name] = info&.issuer_name
+      result[:subject] = info&.subject_text
+      result[:issuer] = info&.issuer_text
+      result[:serial] = signer_cert ? "0x#{signer_cert.serial.to_s(16).upcase}" : nil
+      result[:not_before] = signer_cert&.not_before&.utc&.iso8601
+      result[:not_after] = signer_cert&.not_after&.utc&.iso8601
     end
 
     # Kryptografie je v `VerifyPdfSignature` (jeden zdroj pravdy pro pečeť i
