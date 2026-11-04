@@ -168,10 +168,8 @@ module Qes
       common_name = Qes::CertificateName.value(attributes, 'CN')
       return common_name if common_name.present?
 
-      given_name = Qes::CertificateName.value(attributes, 'GN') ||
-                    Qes::CertificateName.value(attributes, 'givenName')
-      surname = Qes::CertificateName.value(attributes, 'SN') ||
-                Qes::CertificateName.value(attributes, 'surname')
+      given_name = Qes::CertificateName.first_value(attributes, 'GN', 'givenName')
+      surname = Qes::CertificateName.first_value(attributes, 'SN', 'surname')
 
       [given_name, surname].compact_blank.join(' ').presence
     end
